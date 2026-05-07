@@ -1,5 +1,19 @@
 # git-booster
 
+**Local AI-powered Git - 100% private, 0% cloud, 100% automated.**
+
+`git-booster` is a smart Git wrapper that uses **Ollama** to automate repetitive tasks **entirely on your machine**:
+✅ Smart commit message generation
+✅ Automatic `.gitignore` creation/optimization
+✅ AI-assisted merge conflict resolution
+✅ Intelligent code reviews
+✅ Natural language code explanations
+
+**Zero external APIs. Zero data leaks. Zero complex setup.**
+
+---
+
+
 AI-powered Git wrapper using **local Ollama** — no API key, no cloud, runs entirely on your machine.
 
 Automates commit messages, `.gitignore` generation, merge conflict resolution, and code review.
