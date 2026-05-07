@@ -22,59 +22,43 @@ Automates commit messages, `.gitignore` generation, merge conflict resolution, a
 ## Requirements
 
 - Python 3.10+
-- [Ollama](https://ollama.com) installed and running (`ollama serve`)
 - Git
+- `curl` (for Ollama auto-install)
+
+> Ollama is installed and started **automatically** on first run. No manual setup needed.
 
 ---
 
 ## Installation
 
-### 1. Clone and install
+### 1. Clone and add to your shell
 
 ```bash
-git clone <repo_url> git_booster
-cd git_booster
-
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-### 2. Add the wrapper to your shell
-
-The `gai` wrapper script auto-activates the `.venv` and loads your `.env` on every run.
-
-```bash
-# Add to ~/.zshrc (replace with your actual path)
-echo 'alias gai="/home/<you>/git_booster/gai"' >> ~/.zshrc
+git clone <repo_url> ~/git_booster
+echo 'alias gai="$HOME/git_booster/gai"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-### 3. Install Ollama and pull a model
-
-```bash
-# Install Ollama (Linux)
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Start the server
-ollama serve &
-
-# Pull recommended model for GTX 1050 Ti (4GB VRAM)
-ollama pull qwen2.5-coder:3b
-```
-
-### 4. Configure git-booster
+### 2. First run — fully automatic
 
 ```bash
 gai config
 ```
 
-This launches an interactive terminal wizard that lets you:
-- Select your AI provider (Ollama, Anthropic, OpenAI)
-- Set the Ollama server URL
-- Browse and select a model (with GPU compatibility hints)
-- Pull the model automatically if not installed
-- Save everything to `~/.config/git-booster/config.env`
+On first run, `gai` automatically:
+1. Creates the Python `.venv` and installs dependencies
+2. Installs Ollama if not present (via official install script)
+3. Starts the Ollama server in the background
+4. Pulls the configured model (default: `qwen2.5-coder:3b`)
+
+Everything is handled without any manual commands. You only need to run `gai config` once to choose your model.
+
+### 3. That's it
+
+```bash
+# From any git repo:
+gai commit
+```
 
 ---
 

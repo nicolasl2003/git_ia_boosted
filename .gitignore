@@ -40,3 +40,5 @@ config/.*
 ```
 
 You can save this content in a file named `.gitignore` at the root of your project. This file will help exclude all unnecessary files and directories from being tracked by Git.
+
+If you have any other specific requirements or need further customization, feel free to let me know!

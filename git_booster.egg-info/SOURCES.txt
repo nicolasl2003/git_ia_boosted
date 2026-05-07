@@ -14,6 +14,7 @@ git_booster/ai/prompts.py
 git_booster/commands/__init__.py
 git_booster/commands/add.py
 git_booster/commands/commit.py
+git_booster/commands/config.py
 git_booster/commands/resolve.py
 git_booster/commands/review.py
 git_booster/commands/status.py
