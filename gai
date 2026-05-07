@@ -27,6 +27,16 @@ fi
 
 source "$VENV/bin/activate"
 
+# ── Native commands — skip Ollama entirely ────────────────────────────────────
+# These commands need no AI: run immediately without starting Ollama.
+_NATIVE_CMDS=(status rm stop skills config)
+_first_arg="${1:-}"
+for _cmd in "${_NATIVE_CMDS[@]}"; do
+    if [[ "$_first_arg" == "$_cmd" ]]; then
+        exec "$VENV/bin/gai" "$@"
+    fi
+done
+
 # ── 2. Install Ollama if missing ──────────────────────────────────────────────
 if ! command -v ollama &>/dev/null; then
     echo "[git-booster] Ollama not found — installing..."

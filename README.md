@@ -6,16 +6,28 @@ Automates commit messages, `.gitignore` generation, merge conflict resolution, a
 
 ---
 
-## Features
+## Commands
 
-| Command        | Description                                                   |
-|----------------|---------------------------------------------------------------|
-| `gai config`   | Interactive setup: AI provider, Ollama install, model         |
-| `gai add`      | `git add .` + AI-generated/updated `.gitignore`               |
-| `gai status`   | `git status` + AI summary of the repo state                   |
-| `gai commit`   | Generate commit message → validate/rephrase → commit → push   |
-| `gai resolve`  | Detect and resolve merge conflicts with AI                    |
-| `gai review`   | AI code review of staged changes before committing            |
+### Native (no AI — instant, no Ollama needed)
+
+| Command              | Description                                          |
+|----------------------|------------------------------------------------------|
+| `gai status`         | `git status` native output                           |
+| `gai rm <file>`      | Untrack file (keeps on disk)                         |
+| `gai rm <file> --hard` | Untrack + delete file from disk (with confirmation)|
+| `gai stop`           | Stop Ollama server, free memory/CPU                  |
+| `gai config`         | Interactive setup: provider, model, Ollama           |
+| `gai skills`         | List available AI skills                             |
+
+### AI-powered (requires Ollama running)
+
+| Command              | Description                                          |
+|----------------------|------------------------------------------------------|
+| `gai add`            | `git add .` + AI-generated/updated `.gitignore`      |
+| `gai commit`         | Generate commit message → validate → commit → push   |
+| `gai resolve`        | Detect and resolve merge conflicts                   |
+| `gai review`         | Code review of staged changes                        |
+| `gai skill <name>`   | Run a specific AI skill (e.g. `gai skill explain`)   |
 
 ---
 
@@ -139,7 +151,8 @@ If multiple remotes exist, you can choose one or push to all.
 ## Typical workflow
 
 ```bash
-# 1. Make changes in your project
+# 1. Check what changed (instant, no AI)
+gai status
 
 # 2. Stage and generate .gitignore
 gai add
@@ -152,6 +165,31 @@ gai commit
 
 # 5. After a tricky merge
 gai resolve
+
+# 6. Free resources when done
+gai stop
+```
+
+---
+
+## Skills system
+
+Skills are modular AI capabilities. Drop a `.py` file in `git_booster/skills/` and it's auto-discovered.
+
+```bash
+gai skills                    # list available skills
+gai skill explain             # explain current staged diff
+gai skill explain main.py     # explain a specific file
+```
+
+**Adding a custom skill** — create `git_booster/skills/myskill.py`:
+
+```python
+NAME        = "myskill"
+DESCRIPTION = "Does something useful"
+
+def run(args: list[str], path: str | None = None) -> None:
+    ...
 ```
 
 ---
@@ -160,21 +198,26 @@ gai resolve
 
 ```
 git_booster/
-├── gai                          # Shell wrapper — auto-activates .venv + .env
+├── gai                          # Shell wrapper — auto .venv, Ollama, model pull
 ├── git_booster/
 │   ├── cli.py                   # CLI entry point (click)
 │   ├── core/
 │   │   └── git.py               # All git subprocess calls
 │   ├── ai/
 │   │   ├── client.py            # Ollama HTTP client (no external deps)
-│   │   └── prompts.py           # All prompt templates
+│   │   └── prompts.py           # Prompt templates
+│   ├── skills/
+│   │   ├── __init__.py          # Auto-discovery engine
+│   │   └── explain.py           # Built-in skill: explain file/diff
 │   └── commands/
-│       ├── config.py            # gai config — interactive setup
+│       ├── config.py            # gai config
 │       ├── add.py               # gai add
-│       ├── status.py            # gai status
+│       ├── status.py            # gai status (native)
 │       ├── commit.py            # gai commit
+│       ├── rm.py                # gai rm
+│       ├── stop.py              # gai stop
 │       ├── resolve.py           # gai resolve
 │       └── review.py            # gai review
-├── .env.example                 # Environment variables reference
+├── .env.example
 └── pyproject.toml
 ```

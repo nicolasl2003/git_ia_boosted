@@ -180,6 +180,23 @@ def list_untracked_files(path: Optional[str] = None) -> list[str]:
     return result.stdout.splitlines()
 
 
+def is_tracked(filepath: str, path: Optional[str] = None) -> bool:
+    """Return True if the file is tracked by git."""
+    result = _run(["git", "ls-files", "--error-unmatch", filepath], cwd=path, check=False)
+    return result.returncode == 0
+
+
+def rm_file(filepath: str, path: Optional[str] = None, force: bool = False, cached: bool = False) -> None:
+    """Remove a file from git index. cached=True keeps it on disk."""
+    args = ["git", "rm"]
+    if force:
+        args.append("-f")
+    if cached:
+        args.append("--cached")
+    args.append(filepath)
+    _run(args, cwd=path)
+
+
 def walk_all_files(repo_root: str) -> list[str]:
     """Walk the repo root and return all file paths relative to repo_root,
     excluding hidden directories like .git."""
