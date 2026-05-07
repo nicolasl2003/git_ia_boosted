@@ -12,6 +12,7 @@ AI-powered Git wrapper using **Claude** (Anthropic). Supercharge your git workfl
 | `gb resolve` | Detect and resolve merge conflicts with AI |
 | `gb review` | AI code review of staged changes before committing |
 
+
 ## Installation
 
 ```bash

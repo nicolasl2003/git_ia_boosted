@@ -15,7 +15,7 @@ dependencies = [
 
 [project.scripts]
 git-booster = "git_booster.cli:main"
-gb = "git_booster.cli:main"
+gai = "git_booster.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
