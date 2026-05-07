@@ -1,31 +1,29 @@
 """
-Anthropic Claude client — single place for all LLM calls.
+Ollama client — calls the local Ollama HTTP API.
+No API key required. Make sure Ollama is running: `ollama serve`
+
+Configuration (environment variables):
+  OLLAMA_HOST   Ollama base URL  (default: http://localhost:11434)
+  GAI_MODEL     Model to use     (default: llama3.2)
 """
 
 import os
+import json
+import urllib.request
+import urllib.error
 from typing import Optional
-import anthropic
+
+DEFAULT_MODEL = "llama3.2"
+DEFAULT_HOST  = "http://localhost:11434"
+MAX_TOKENS    = 4096
 
 
-_client: Optional[anthropic.Anthropic] = None
-
-DEFAULT_MODEL = "claude-3-5-haiku-20241022"   # fast + cheap; override via env
-MAX_TOKENS = 4096
+def _get_host() -> str:
+    return os.environ.get("OLLAMA_HOST", DEFAULT_HOST).rstrip("/")
 
 
-def get_client() -> anthropic.Anthropic:
-    """Return (or lazily create) the shared Anthropic client."""
-    global _client
-    if _client is None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY environment variable is not set.\n"
-                "Export it before using git-booster:\n"
-                "  export ANTHROPIC_API_KEY=sk-ant-..."
-            )
-        _client = anthropic.Anthropic(api_key=api_key)
-    return _client
+def _get_model() -> str:
+    return os.environ.get("GAI_MODEL", DEFAULT_MODEL)
 
 
 def ask(
@@ -34,13 +32,38 @@ def ask(
     model: Optional[str] = None,
     max_tokens: int = MAX_TOKENS,
 ) -> str:
-    """Send a message to Claude and return the text response."""
-    client = get_client()
-    chosen_model = model or os.environ.get("GIT_BOOSTER_MODEL", DEFAULT_MODEL)
-    message = client.messages.create(
-        model=chosen_model,
-        max_tokens=max_tokens,
-        system=system,
-        messages=[{"role": "user", "content": user}],
+    """Send a message to Ollama and return the text response."""
+    host         = _get_host()
+    chosen_model = model or _get_model()
+
+    payload = json.dumps({
+        "model": chosen_model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user},
+        ],
+        "stream": False,
+        "options": {
+            "num_predict": max_tokens,
+        },
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        f"{host}/api/chat",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
     )
-    return message.content[0].text.strip()
+
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data["message"]["content"].strip()
+    except urllib.error.URLError as e:
+        raise RuntimeError(
+            f"Cannot reach Ollama at {host}.\n"
+            "Make sure Ollama is running:  ollama serve\n"
+            f"Details: {e}"
+        )
+    except KeyError:
+        raise RuntimeError(f"Unexpected response from Ollama: {data}")

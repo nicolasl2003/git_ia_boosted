@@ -12,7 +12,7 @@ console = Console()
 @click.group()
 @click.version_option(package_name="git-booster")
 def main():
-    """git-booster — AI-powered Git wrapper using Claude."""
+    """git-booster — AI-powered Git wrapper using Ollama (local LLM)."""
     pass
 
 
