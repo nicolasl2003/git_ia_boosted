@@ -107,11 +107,14 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
             return
 
         elif choice == "regenerate":
-            feedback = Prompt.ask("[cyan]What should be different in the message?[/cyan]")
+            console.print(
+                "[dim]Describe how you want the commit "
+                "(e.g. 'focus on the config command', 'use fix type', 'mention ollama migration')[/dim]"
+            )
+            style_hint = Prompt.ask("[cyan]How should this commit be described?[/cyan]")
             with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
-                regen_system, regen_user = prompts.commit_prompt(diff, raw_status)
-                regen_user += f"\n\nUser feedback: {feedback}\nRewrite the message accordingly."
-                message = ai.ask(regen_system, regen_user, max_tokens=256)
+                regen_system, regen_user = prompts.commit_prompt(diff, raw_status, style_hint=style_hint)
+                message = ai.ask(regen_system, regen_user, max_tokens=128)
             continue
 
         elif choice == "edit":

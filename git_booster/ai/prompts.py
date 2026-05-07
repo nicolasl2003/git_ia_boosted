@@ -9,27 +9,30 @@ Each function returns a (system_prompt, user_prompt) tuple.
 
 COMMIT_SYSTEM = """\
 You are an expert software engineer writing git commit messages.
-Rules:
-- Follow the Conventional Commits specification (feat, fix, docs, refactor, test, chore…)
-- First line: type(scope?): short imperative summary ≤ 72 chars
-- Optional body: explain WHY, not WHAT (wrap at 72 chars)
-- No bullet points in the subject line
-- Output ONLY the commit message, nothing else, no markdown fences.
+Strict rules — violation is not acceptable:
+- Format: type(scope): summary
+- type: feat | fix | docs | refactor | test | chore | style | perf
+- scope: the file or module most affected (short, lowercase, no path)
+- summary: imperative, lowercase, ≤ 72 chars, no period at end
+- ONE LINE ONLY. No body. No bullet points. No explanation.
+- ABSOLUTELY NO markdown, no backticks, no fences, no asterisks.
+- Output the commit message line and nothing else.
+Examples of correct output:
+  fix(cli): remove deprecated --flag option
+  feat(commit): add push prompt after commit
+  refactor(git): extract _run helper to core module
+  docs(readme): update installation instructions
 """
 
-def commit_prompt(diff: str, status: str) -> tuple[str, str]:
-    user = f"""Here is the staged diff:
-
-```diff
-{diff}
-```
+def commit_prompt(diff: str, status: str, style_hint: str = "") -> tuple[str, str]:
+    style = f"\nUser instruction: {style_hint}" if style_hint else ""
+    user = f"""Staged diff:
+{diff[:3000]}
 
 Git status:
-```
 {status}
-```
-
-Write the commit message."""
+{style}
+Write the commit message (one line only, no markdown)."""
     return COMMIT_SYSTEM, user
 
 
