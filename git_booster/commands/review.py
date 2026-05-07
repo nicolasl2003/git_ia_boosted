@@ -35,7 +35,7 @@ def run(path: str | None = None) -> None:
 
     console.print(Rule(f"[bold]Code Review[/bold] — branch: [cyan]{branch}[/cyan]"))
 
-    with console.status("[bold yellow]Claude is reviewing your changes...[/bold yellow]"):
+    with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
         system, user = prompts.review_prompt(diff, raw_status)
         review = ai.ask(system, user, max_tokens=1024)
 

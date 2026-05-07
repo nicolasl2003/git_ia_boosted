@@ -97,5 +97,20 @@ def cmd_review(path):
         raise SystemExit(1)
 
 
+# ---------------------------------------------------------------------------
+# gai config
+# ---------------------------------------------------------------------------
+
+@main.command("config")
+def cmd_config():
+    """Interactive configuration: AI provider, Ollama model, API keys."""
+    from git_booster.commands import config
+    try:
+        config.run()
+    except Exception as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
     main()

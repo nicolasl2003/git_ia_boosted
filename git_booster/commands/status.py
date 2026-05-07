@@ -33,7 +33,7 @@ def run(path: str | None = None) -> None:
     console.print()
 
     # ---- 2. AI summary -------------------------------------------------------
-    with console.status("[bold yellow]Claude is summarising...[/bold yellow]"):
+    with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
         log_display = log if log else "No commits yet."
         system, user = prompts.status_prompt(raw_status, log_display, branch)
         summary = ai.ask(system, user, max_tokens=512)

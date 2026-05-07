@@ -1,0 +1,32 @@
+#!/usr/bin/env zsh
+# gai — git-booster wrapper
+# Activates .venv automatically, loads .env if present, then runs gai.
+
+set -e
+
+SCRIPT_DIR="${0:A:h}"
+
+# ── Activate virtual environment ──────────────────────────────────────────────
+VENV="$SCRIPT_DIR/.venv"
+if [[ -f "$VENV/bin/activate" ]]; then
+    source "$VENV/bin/activate"
+else
+    echo "[git-booster] ERROR: .venv not found at $VENV"
+    echo "Run: python -m venv .venv && pip install -e ."
+    exit 1
+fi
+
+# ── Load .env if present ──────────────────────────────────────────────────────
+ENV_FILE="$SCRIPT_DIR/.env"
+if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    source "$ENV_FILE"
+    set +a
+fi
+
+# ── Show active config (transparency) ─────────────────────────────────────────
+echo "[ git-booster ] provider: ollama | model: ${GAI_MODEL:-llama3.2} | host: ${OLLAMA_HOST:-http://localhost:11434}"
+echo ""
+
+# ── Run gai command ───────────────────────────────────────────────────────────
+exec "$VENV/bin/gai" "$@"

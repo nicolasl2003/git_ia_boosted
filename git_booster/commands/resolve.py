@@ -54,7 +54,7 @@ def run(path: str | None = None) -> None:
             console.print(f"[yellow]Skipped {filepath}[/yellow]")
             continue
 
-        with console.status(f"[bold yellow]Claude is resolving {filepath}...[/bold yellow]"):
+        with console.status(f"[bold yellow]A.I is processing {filepath}...[/bold yellow]"):
             system, user = prompts.conflict_prompt(filepath, content)
             resolved = ai.ask(system, user, max_tokens=4096)
 
@@ -79,6 +79,6 @@ def run(path: str | None = None) -> None:
         console.print(
             f"[bold green]{resolved_count}/{len(conflict_files)} conflict(s) resolved.[/bold green]"
         )
-        console.print("You can now run [bold]gb commit[/bold] to finalise the merge.")
+        console.print("You can now run [bold]gai commit[/bold] to finalise the merge.")
     else:
         console.print("[yellow]No files were modified.[/yellow]")

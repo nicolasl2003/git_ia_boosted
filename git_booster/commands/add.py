@@ -37,7 +37,7 @@ def run(path: str | None = None) -> None:
     existing = gitignore_path.read_text(encoding="utf-8") if gitignore_path.exists() else ""
 
     # ---- 3. Ask Claude -------------------------------------------------------
-    with console.status("[bold yellow]Claude is generating .gitignore...[/bold yellow]"):
+    with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
         system, user = prompts.gitignore_prompt(all_files, existing)
         generated = ai.ask(system, user)
 

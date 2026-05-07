@@ -1,93 +1,112 @@
 # git-booster
 
-AI-powered Git wrapper using **Claude** (Anthropic). Supercharge your git workflow with automatic commit messages, `.gitignore` generation, merge conflict resolution, and code review.
+AI-powered Git wrapper using **local Ollama** (no API key required). Supercharge your git workflow with automatic commit messages, `.gitignore` generation, merge conflict resolution, and code review.
 
 ## Features
 
-| Command | Description |
-|---------|-------------|
-| `gb add` | `git add .` + AI-generated/updated `.gitignore` |
-| `gb status` | `git status` + AI summary of the repo state |
-| `gb commit` | Generate a Conventional Commit message from staged diff |
-| `gb resolve` | Detect and resolve merge conflicts with AI |
-| `gb review` | AI code review of staged changes before committing |
+| Command       | Description                                                  |
+|---------------|--------------------------------------------------------------|
+| `gai config`  | Interactive setup: provider, Ollama install, model selection |
+| `gai add`     | `git add .` + AI-generated/updated `.gitignore`              |
+| `gai status`  | `git status` + AI summary of the repo state                  |
+| `gai commit`  | Generate commit message, validate/modify, commit + push      |
+| `gai resolve` | Detect and resolve merge conflicts with AI                   |
+| `gai review`  | AI code review of staged changes before committing           |
 
+## Requirements
+
+- Python 3.10+
+- [Ollama](https://ollama.com) running locally (`ollama serve`)
+- A pulled model (see `gai config`)
 
 ## Installation
 
 ```bash
-# 1. Clone / copy the project
-cd git_booster
+# 1. Clone the project
+git clone <repo> && cd git_booster
 
-# 2. Create a virtualenv (recommended)
+# 2. Create virtualenv and install
 python -m venv .venv
 source .venv/bin/activate
-
-# 3. Install
 pip install -e .
 
-# 4. Set your Anthropic API key
-export ANTHROPIC_API_KEY=sk-ant-...
+# 3. (Recommended) Use the wrapper script for auto env activation
+# Add to ~/.zshrc:
+alias gai="/path/to/git_booster/gai"
+
+# 4. Configure provider and model
+gai config
 ```
 
-## Usage
+## Quick start
 
 ```bash
+# First time — configure Ollama + model
+gai config
+
 # Inside any git repo:
+gai add          # stage everything + generate .gitignore
+gai status       # enriched status with AI summary
+gai review       # review staged changes before committing
+gai commit       # auto-generate commit message → validate → commit → push
+gai resolve      # resolve merge conflicts
+```
 
-gb add          # stage everything + generate .gitignore
-gb status       # enriched status with AI summary
-gb review       # review staged changes before committing
-gb commit       # auto-generate commit message and commit
-gb resolve      # resolve merge conflicts
+## `gai commit` workflow
 
-# Options
-gb commit --yes          # skip confirmation prompt
-gb commit --path /my/repo
-gb --help
+```
+A.I is processing...
+┌─ Generated commit message ──────────────────────┐
+│ feat(ai): replace Claude references with Ollama  │
+└──────────────────────────────────────────────────┘
+What do you want to do? [commit/edit/regenerate/abort] (commit):
+  commit      → commit as-is
+  edit        → open in $EDITOR
+  regenerate  → give feedback, AI rewrites
+  abort       → cancel
+
+Push to remote? [y/N]
 ```
 
 ## Configuration
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ANTHROPIC_API_KEY` | — | **Required.** Your Anthropic API key |
-| `GIT_BOOSTER_MODEL` | `claude-3-5-haiku-20241022` | Override Claude model |
+Settings are stored in `~/.config/git-booster/config.env`.  
+Run `gai config` to update them interactively.
 
-## Typical workflow
+| Variable          | Default                    | Description                  |
+|-------------------|----------------------------|------------------------------|
+| `OLLAMA_HOST`     | `http://localhost:11434`   | Ollama server URL            |
+| `GAI_MODEL`       | `llama3.2`                 | Model to use                 |
+| `GAI_PROVIDER`    | `ollama`                   | AI provider                  |
+| `ANTHROPIC_API_KEY` | —                        | Only if using Anthropic      |
+| `OPENAI_API_KEY`  | —                          | Only if using OpenAI         |
+
+### Recommended model for GTX 1050 Ti (4GB VRAM)
 
 ```bash
-# 1. Make some changes in your project
-# 2. Stage + generate .gitignore
-gb add
-
-# 3. Review before committing (optional)
-gb review
-
-# 4. Commit with AI-generated message
-gb commit
-
-# 5. After a tricky merge
-gb resolve
+ollama pull qwen2.5-coder:3b   # ~2GB VRAM, optimised for code
+export GAI_MODEL=qwen2.5-coder:3b
 ```
 
 ## Project structure
 
 ```
 git_booster/
+├── gai                         # Shell wrapper (auto-activates .venv + .env)
 ├── git_booster/
-│   ├── cli.py              # CLI entry point (click)
+│   ├── cli.py                  # CLI entry point (click)
 │   ├── core/
-│   │   └── git.py          # All git subprocess calls
+│   │   └── git.py              # All git subprocess calls
 │   ├── ai/
-│   │   ├── client.py       # Anthropic client
-│   │   └── prompts.py      # All prompt templates
+│   │   ├── client.py           # Ollama HTTP client
+│   │   └── prompts.py          # All prompt templates
 │   └── commands/
-│       ├── add.py          # gb add
-│       ├── status.py       # gb status
-│       ├── commit.py       # gb commit
-│       ├── resolve.py      # gb resolve
-│       └── review.py       # gb review
+│       ├── config.py           # gai config — interactive setup
+│       ├── add.py              # gai add
+│       ├── status.py           # gai status
+│       ├── commit.py           # gai commit
+│       ├── resolve.py          # gai resolve
+│       └── review.py           # gai review
 ├── pyproject.toml
 └── .env.example
 ```
