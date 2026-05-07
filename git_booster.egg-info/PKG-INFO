@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: git-booster
+Version: 0.1.0
+Summary: AI-powered Git wrapper using Claude (Anthropic)
+Requires-Python: >=3.10
+Requires-Dist: anthropic>=0.25.0
+Requires-Dist: click>=8.1.0
+Requires-Dist: rich>=13.0.0

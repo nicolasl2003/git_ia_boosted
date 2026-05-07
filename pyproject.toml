@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "git-booster"
+version = "0.1.0"
+description = "AI-powered Git wrapper using Claude (Anthropic)"
+requires-python = ">=3.10"
+dependencies = [
+    "anthropic>=0.25.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+]
+
+[project.scripts]
+git-booster = "git_booster.cli:main"
+gb = "git_booster.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
