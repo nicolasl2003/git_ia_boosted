@@ -1,4 +1,1 @@
-ai
-commands
-core
 git_booster

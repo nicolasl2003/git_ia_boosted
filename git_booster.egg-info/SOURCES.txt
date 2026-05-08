@@ -17,6 +17,11 @@ git_booster/commands/commit.py
 git_booster/commands/config.py
 git_booster/commands/resolve.py
 git_booster/commands/review.py
+git_booster/commands/rm.py
 git_booster/commands/status.py
+git_booster/commands/stop.py
 git_booster/core/__init__.py
 git_booster/core/git.py
+git_booster/skills/__init__.py
+git_booster/skills/explain.py
+git_booster/skills/hello.py
