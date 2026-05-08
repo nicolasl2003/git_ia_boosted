@@ -197,6 +197,97 @@ def rm_file(filepath: str, path: Optional[str] = None, force: bool = False, cach
     _run(args, cwd=path)
 
 
+def push(remote: str = "origin", branch: str = "", set_upstream: bool = False,
+         path: Optional[str] = None) -> tuple[bool, str]:
+    """Push to remote. Returns (success, full_output)."""
+    args = ["git", "push"]
+    if set_upstream:
+        args += ["-u", remote, branch or get_branch(path)]
+    elif branch:
+        args += [remote, branch]
+    else:
+        args += [remote]
+    result = _run(args, cwd=path, check=False)
+    out = (result.stdout + result.stderr).strip()
+    return result.returncode == 0, out
+
+
+# Push error categories returned by parse_push_error()
+PUSH_ERR_FETCH_FIRST   = "fetch_first"    # remote has commits we don't have
+PUSH_ERR_NO_UPSTREAM   = "no_upstream"    # branch has no upstream tracking
+PUSH_ERR_REFSPEC       = "refspec"        # unknown/bad branch name on remote
+PUSH_ERR_REJECTED      = "rejected"       # non-fast-forward rejection
+PUSH_ERR_AUTH          = "auth"           # authentication failure
+PUSH_ERR_NO_REMOTE     = "no_remote"      # remote not found / wrong URL
+PUSH_ERR_UNKNOWN       = "unknown"
+
+
+def parse_push_error(output: str) -> str:
+    """Classify a git push error string into one of the PUSH_ERR_* constants.
+    Checks are ordered from most-specific to least-specific."""
+    low = output.lower()
+
+    # Authentication / permissions
+    if ("authentication failed" in low or "could not read username" in low
+            or "permission denied" in low or "access denied" in low):
+        return PUSH_ERR_AUTH
+
+    # Remote unreachable
+    if ("repository not found" in low
+            or "does not appear to be a git repository" in low
+            or "could not resolve host" in low
+            or "connection refused" in low):
+        return PUSH_ERR_NO_REMOTE
+
+    # No upstream set
+    if ("no upstream branch" in low or "--set-upstream" in low
+            or "set-upstream" in low):
+        return PUSH_ERR_NO_UPSTREAM
+
+    # Bad refspec (branch name unknown on remote)
+    if ("src refspec" in low or "does not match any" in low
+            or "invalid refspec" in low):
+        return PUSH_ERR_REFSPEC
+
+    # Fetch first (behind remote) — most common rejection
+    if ("fetch first" in low
+            or ("updates were rejected" in low and "behind" in low)
+            or ("updates were rejected" in low and "fetch first" in low)):
+        return PUSH_ERR_FETCH_FIRST
+
+    # Non-fast-forward without "fetch first" hint → same fix
+    if "non-fast-forward" in low:
+        return PUSH_ERR_REJECTED
+
+    # Generic rejected → treat same as fetch_first
+    if "rejected" in low:
+        return PUSH_ERR_FETCH_FIRST
+
+    return PUSH_ERR_UNKNOWN
+
+
+def list_remote_branches(remote: str = "origin", path: Optional[str] = None) -> list[str]:
+    """Return list of branch names on the remote (after fetch)."""
+    result = _run(["git", "branch", "-r"], cwd=path, check=False)
+    branches = []
+    prefix = f"{remote}/"
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if line.startswith(prefix) and "HEAD" not in line:
+            branches.append(line[len(prefix):])
+    return branches
+
+
+def set_upstream(remote: str, branch: str, path: Optional[str] = None) -> tuple[bool, str]:
+    """Set the upstream tracking branch and push."""
+    result = _run(
+        ["git", "push", "--set-upstream", remote, branch],
+        cwd=path, check=False,
+    )
+    out = (result.stdout + result.stderr).strip()
+    return result.returncode == 0, out
+
+
 def fetch(remote: str = "origin", path: Optional[str] = None) -> tuple[bool, str]:
     """Fetch from remote. Returns (success, error_message)."""
     result = _run(["git", "fetch", remote], cwd=path, check=False)
@@ -249,6 +340,58 @@ def pull(remote: str = "origin", branch: str = "HEAD", rebase: bool = False,
     return result.returncode == 0, out
 
 
+def has_uncommitted_changes(path: Optional[str] = None) -> bool:
+    """Return True if there are staged or unstaged changes in the working tree."""
+    result = _run(["git", "status", "--porcelain"], cwd=path, check=False)
+    return bool(result.stdout.strip())
+
+
+def stash_push(message: str = "gai-resolve-autostash", path: Optional[str] = None) -> tuple[bool, str]:
+    """Stash all local changes (tracked + untracked). Returns (success, stash_ref)."""
+    result = _run(
+        ["git", "stash", "push", "-u", "-m", message],
+        cwd=path, check=False,
+    )
+    out = (result.stdout + result.stderr).strip()
+    if result.returncode != 0:
+        return False, out
+    # Extract stash ref from output, e.g. "Saved working directory ... stash@{0}"
+    for line in out.splitlines():
+        if "stash@{" in line:
+            start = line.index("stash@{")
+            ref = line[start:].split()[0].rstrip(")")
+            return True, ref
+    return True, "stash@{0}"
+
+
+def stash_pop(path: Optional[str] = None) -> tuple[bool, str]:
+    """Pop the most recent stash. Returns (success, output)."""
+    result = _run(["git", "stash", "pop"], cwd=path, check=False)
+    out = (result.stdout + result.stderr).strip()
+    return result.returncode == 0, out
+
+
+def stash_drop(ref: str = "stash@{0}", path: Optional[str] = None) -> None:
+    """Drop a specific stash entry silently."""
+    _run(["git", "stash", "drop", ref], cwd=path, check=False)
+
+
+def rebase_continue(path: Optional[str] = None) -> tuple[bool, str]:
+    """Continue an in-progress rebase (after conflicts resolved)."""
+    import os as _os
+    env = {**_os.environ, "GIT_EDITOR": "true"}  # skip editor prompt
+    result = _run(["git", "rebase", "--continue"], cwd=path, check=False)
+    out = (result.stdout + result.stderr).strip()
+    return result.returncode == 0, out
+
+
+def rebase_skip(path: Optional[str] = None) -> tuple[bool, str]:
+    """Skip the current patch in an in-progress rebase."""
+    result = _run(["git", "rebase", "--skip"], cwd=path, check=False)
+    out = (result.stdout + result.stderr).strip()
+    return result.returncode == 0, out
+
+
 def abort_merge(path: Optional[str] = None) -> tuple[bool, str]:
     """Abort an in-progress merge."""
     result = _run(["git", "merge", "--abort"], cwd=path, check=False)
@@ -272,6 +415,42 @@ def is_rebasing(path: Optional[str] = None) -> bool:
     repo_root = get_repo_root(path)
     git_dir = Path(repo_root) / ".git"
     return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
+
+
+def count_local_commits(branch: str, remote: str = "origin", path: Optional[str] = None) -> int:
+    """Return the number of local commits not yet on remote."""
+    result = _run(
+        ["git", "rev-list", "--count", f"{remote}/{branch}..HEAD"],
+        cwd=path, check=False,
+    )
+    try:
+        return int(result.stdout.strip())
+    except ValueError:
+        return 0
+
+
+def has_merge_commits(path: Optional[str] = None, n: int = 20) -> bool:
+    """Return True if the last n commits contain merge commits (2+ parents).
+    Used to decide rebase vs merge strategy."""
+    result = _run(
+        ["git", "log", f"-{n}", "--merges", "--oneline"],
+        cwd=path, check=False,
+    )
+    if result.returncode != 0:
+        return False
+    return bool(result.stdout.strip())
+
+
+def get_remote_default_branch(remote: str = "origin", path: Optional[str] = None) -> str:
+    """Return the default branch of the remote (main, master, develop…)."""
+    result = _run(
+        ["git", "remote", "show", remote],
+        cwd=path, check=False,
+    )
+    for line in result.stdout.splitlines():
+        if "HEAD branch" in line:
+            return line.split(":")[-1].strip()
+    return "main"
 
 
 def walk_all_files(repo_root: str) -> list[str]:

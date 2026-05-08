@@ -1,60 +1,70 @@
 """
-Ollama client — calls the local Ollama HTTP API.
-No API key required. Make sure Ollama is running: `ollama serve`
+Multi-provider AI client for git-booster.
 
-Configuration (environment variables):
-  OLLAMA_HOST   Ollama base URL  (default: http://localhost:11434)
-  GAI_MODEL     Model to use     (default: llama3.2)
+Priority: env vars > ~/.config/git-booster/config.env > defaults
+
+Providers:  ollama (default) | anthropic | openai
+Config:     run `gai config` to set provider/model/keys
 """
 
 import os
 import json
 import urllib.request
 import urllib.error
+from pathlib import Path
 from typing import Optional
 
-DEFAULT_MODEL = "llama3.2"
-DEFAULT_HOST  = "http://localhost:11434"
-MAX_TOKENS    = 4096
+# ── Config ────────────────────────────────────────────────────────────────────
+
+_CONFIG_FILE = Path.home() / ".config" / "git-booster" / "config.env"
+MAX_TOKENS   = 4096
 
 
-def _get_host() -> str:
-    return os.environ.get("OLLAMA_HOST", DEFAULT_HOST).rstrip("/")
+def _load_config() -> dict[str, str]:
+    """Load config.env then overlay env vars (env vars always win)."""
+    cfg: dict[str, str] = {}
+    if _CONFIG_FILE.exists():
+        for line in _CONFIG_FILE.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                cfg[k.strip()] = v.strip()
+    for key in ("GAI_PROVIDER", "GAI_MODEL", "OLLAMA_HOST",
+                "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL"):
+        if key in os.environ:
+            cfg[key] = os.environ[key]
+    return cfg
 
 
-def _get_model() -> str:
-    return os.environ.get("GAI_MODEL", DEFAULT_MODEL)
+def _cfg(key: str, default: str = "") -> str:
+    return _load_config().get(key, default)
 
 
-def ask(
-    system: str,
-    user: str,
-    model: Optional[str] = None,
-    max_tokens: int = MAX_TOKENS,
-) -> str:
-    """Send a message to Ollama and return the text response."""
-    host         = _get_host()
-    chosen_model = model or _get_model()
+def _default_model(provider: str) -> str:
+    return {
+        "ollama":    "llama3.2",
+        "anthropic": "claude-3-5-haiku-20241022",
+        "openai":    "gpt-4o-mini",
+    }.get(provider, "llama3.2")
 
+
+# ── Ollama ────────────────────────────────────────────────────────────────────
+
+def _ask_ollama(system: str, user: str, model: str, max_tokens: int) -> str:
+    host = _cfg("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
     payload = json.dumps({
-        "model": chosen_model,
+        "model": model,
         "messages": [
             {"role": "system", "content": system},
             {"role": "user",   "content": user},
         ],
         "stream": False,
-        "options": {
-            "num_predict": max_tokens,
-        },
+        "options": {"num_predict": max_tokens},
     }).encode("utf-8")
-
     req = urllib.request.Request(
-        f"{host}/api/chat",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-        method="POST",
+        f"{host}/api/chat", data=payload,
+        headers={"Content-Type": "application/json"}, method="POST",
     )
-
     try:
         with urllib.request.urlopen(req, timeout=120) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -62,8 +72,104 @@ def ask(
     except urllib.error.URLError as e:
         raise RuntimeError(
             f"Cannot reach Ollama at {host}.\n"
-            "Make sure Ollama is running:  ollama serve\n"
+            "Start it with:  ollama serve\n"
             f"Details: {e}"
         )
     except KeyError:
-        raise RuntimeError(f"Unexpected response from Ollama: {data}")
+        raise RuntimeError(f"Unexpected Ollama response: {data}")
+
+
+# ── Anthropic ─────────────────────────────────────────────────────────────────
+
+def _ask_anthropic(system: str, user: str, model: str, max_tokens: int) -> str:
+    api_key = _cfg("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY not set. Run: gai config")
+    payload = json.dumps({
+        "model": model, "max_tokens": max_tokens,
+        "system": system,
+        "messages": [{"role": "user", "content": user}],
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages", data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+        }, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data["content"][0]["text"].strip()
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Anthropic error {e.code}: {body}")
+    except KeyError:
+        raise RuntimeError(f"Unexpected Anthropic response: {data}")
+
+
+# ── OpenAI-compatible (OpenAI / OpenRouter / …) ───────────────────────────────
+
+def _ask_openai(system: str, user: str, model: str, max_tokens: int) -> str:
+    api_key  = _cfg("OPENAI_API_KEY")
+    base_url = _cfg("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY not set. Run: gai config")
+    payload = json.dumps({
+        "model": model, "max_tokens": max_tokens,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user},
+        ],
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        f"{base_url}/chat/completions", data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data["choices"][0]["message"]["content"].strip()
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"OpenAI error {e.code}: {body}")
+    except KeyError:
+        raise RuntimeError(f"Unexpected OpenAI response: {data}")
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+
+def ask(
+    system: str,
+    user: str,
+    model: Optional[str] = None,
+    max_tokens: int = MAX_TOKENS,
+) -> str:
+    """Send a prompt to the configured AI provider and return the response."""
+    cfg      = _load_config()
+    provider = cfg.get("GAI_PROVIDER", "ollama").lower()
+    chosen   = model or cfg.get("GAI_MODEL") or _default_model(provider)
+
+    if provider == "ollama":
+        return _ask_ollama(system, user, chosen, max_tokens)
+    elif provider == "anthropic":
+        return _ask_anthropic(system, user, chosen, max_tokens)
+    elif provider == "openai":
+        return _ask_openai(system, user, chosen, max_tokens)
+    else:
+        raise RuntimeError(
+            f"Unknown provider '{provider}'. Valid: ollama, anthropic, openai.\n"
+            "Run: gai config"
+        )
+
+
+def current_provider() -> str:
+    return _cfg("GAI_PROVIDER", "ollama")
+
+
+def current_model() -> str:
+    return _cfg("GAI_MODEL") or _default_model(current_provider())

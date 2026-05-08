@@ -96,13 +96,15 @@ def _pull_ollama_model(model: str) -> None:
         console.print(f"[red]Failed to pull {model}.[/red]")
 
 
-def _configure_ollama(cfg: dict) -> dict:
-    """Interactive Ollama configuration."""
+def _configure_ollama(cfg: dict) -> dict | None:
+    """Interactive Ollama configuration. Returns None if user quits."""
     console.print(Rule("[bold]Ollama configuration[/bold]"))
 
     # Host
     current_host = cfg.get("OLLAMA_HOST", "http://localhost:11434")
-    host = Prompt.ask("Ollama host", default=current_host)
+    host = Prompt.ask("Ollama host (q to cancel)", default=current_host)
+    if host.lower() == "q":
+        return None
     cfg["OLLAMA_HOST"] = host
 
     # Check if running
@@ -124,10 +126,15 @@ def _configure_ollama(cfg: dict) -> dict:
     for k, (name, desc) in OLLAMA_MODELS.items():
         console.print(f"  [cyan]{k}.[/cyan] {name:<25} {desc}")
     console.print(f"  [cyan]5.[/cyan] Enter custom model name")
+    console.print(f"  [cyan]q.[/cyan] Cancel")
 
-    pick = Prompt.ask("Model", choices=["1","2","3","4","5"], default="1")
+    pick = Prompt.ask("Model", choices=["1","2","3","4","5","q","Q"], default="1")
+    if pick.lower() == "q":
+        return None
     if pick == "5":
         model = Prompt.ask("Custom model name (e.g. qwen2.5-coder:7b)")
+        if not model.strip():
+            return None
     else:
         model, _ = OLLAMA_MODELS[pick]
 
@@ -145,9 +152,11 @@ def _configure_ollama(cfg: dict) -> dict:
     return cfg
 
 
-def _configure_anthropic(cfg: dict) -> dict:
+def _configure_anthropic(cfg: dict) -> dict | None:
     console.print(Rule("[bold]Anthropic configuration[/bold]"))
-    key = Prompt.ask("Anthropic API key (sk-ant-...)", password=True)
+    key = Prompt.ask("Anthropic API key (sk-ant-..., q to cancel)", password=False)
+    if key.lower() == "q":
+        return None
     model = Prompt.ask("Model", default="claude-3-5-haiku-20241022")
     cfg["ANTHROPIC_API_KEY"] = key
     cfg["GAI_MODEL"]         = model
@@ -155,13 +164,20 @@ def _configure_anthropic(cfg: dict) -> dict:
     return cfg
 
 
-def _configure_openai(cfg: dict) -> dict:
-    console.print(Rule("[bold]OpenAI configuration[/bold]"))
-    key = Prompt.ask("OpenAI API key (sk-...)", password=True)
+def _configure_openai(cfg: dict) -> dict | None:
+    console.print(Rule("[bold]OpenAI / OpenRouter configuration[/bold]"))
+    key = Prompt.ask("API key (sk-..., q to cancel)", password=False)
+    if key.lower() == "q":
+        return None
+    base_url = Prompt.ask(
+        "Base URL (Enter = OpenAI, or paste OpenRouter URL)",
+        default="https://api.openai.com/v1",
+    )
     model = Prompt.ask("Model", default="gpt-4o-mini")
-    cfg["OPENAI_API_KEY"] = key
-    cfg["GAI_MODEL"]      = model
-    cfg["GAI_PROVIDER"]   = "openai"
+    cfg["OPENAI_API_KEY"]  = key
+    cfg["OPENAI_BASE_URL"] = base_url
+    cfg["GAI_MODEL"]       = model
+    cfg["GAI_PROVIDER"]    = "openai"
     return cfg
 
 
@@ -172,21 +188,42 @@ def run() -> None:
     _show_current(cfg)
     console.print()
 
+    # Show active provider/model
+    active_provider = cfg.get("GAI_PROVIDER", "ollama")
+    active_model    = cfg.get("GAI_MODEL", "llama3.2")
+    console.print(
+        f"[dim]Active: [cyan]{active_provider}[/cyan] / [cyan]{active_model}[/cyan][/dim]\n"
+    )
+
     # Provider selection
     console.print("[bold]Select AI provider:[/bold]")
     for k, (name, desc) in PROVIDERS.items():
-        console.print(f"  [cyan]{k}.[/cyan] {name:<12} {desc}")
+        marker = " [green](active)[/green]" if name == active_provider else ""
+        console.print(f"  [cyan]{k}.[/cyan] {name:<12} {desc}{marker}")
+    console.print("  [cyan]q.[/cyan] quit        Exit without changes")
 
-    pick = Prompt.ask("Provider", choices=["1","2","3"], default="1")
+    pick = Prompt.ask("Provider", choices=["1", "2", "3", "q", "Q"], default="1")
+
+    if pick.lower() == "q":
+        console.print("[yellow]Configuration unchanged. Exiting.[/yellow]")
+        return
+
     provider_name = PROVIDERS[pick][0]
 
     if provider_name == "ollama":
-        cfg = _configure_ollama(cfg)
+        result = _configure_ollama(cfg)
     elif provider_name == "anthropic":
-        cfg = _configure_anthropic(cfg)
+        result = _configure_anthropic(cfg)
     elif provider_name == "openai":
-        cfg = _configure_openai(cfg)
+        result = _configure_openai(cfg)
+    else:
+        result = None
 
+    if result is None:
+        console.print("[yellow]Configuration unchanged. Exiting.[/yellow]")
+        return
+
+    cfg = result
     # Save
     _write_config(cfg)
     console.print()

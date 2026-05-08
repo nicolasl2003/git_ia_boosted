@@ -22,12 +22,19 @@ def main():
 # ---------------------------------------------------------------------------
 
 @main.command("add")
+@click.argument("files", nargs=-1, required=False)
 @click.option("--path", "-p", default=None, help="Repository path (default: cwd)")
-def cmd_add(path):
-    """Stage all changes (git add .) and generate/update .gitignore via AI."""
+def cmd_add(files, path):
+    """Stage all changes (or specific files) and manage .gitignore via AI.
+
+    Examples:
+      gai add              # stage everything
+      gai add file1.py     # stage specific file
+      gai add src/ tests/  # stage directories
+    """
     from git_booster.commands import add
     try:
-        add.run(path)
+        add.run(list(files) if files else None, path)
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
@@ -147,23 +154,53 @@ def cmd_config():
 
 
 # ---------------------------------------------------------------------------
-# gai skills
+# gai skills [list]
 # ---------------------------------------------------------------------------
 
 @main.command("skills")
-def cmd_skills_list():
-    """List available AI skills."""
+@click.argument("subcommand", required=False, default="list")
+@click.option("--trigger", "-t", default=None, help="Filter by trigger (manual, pre-commit, post-push…)")
+def cmd_skills(subcommand, trigger):
+    """List available skills.
+
+    \b
+    Usage:
+      gai skills              # list all skills
+      gai skills list         # same
+      gai skills list -t pre-commit   # filter by trigger
+    """
+    if subcommand not in ("list",):
+        console.print(f"[red]Unknown subcommand:[/red] {subcommand}  (available: list)")
+        raise SystemExit(1)
+
     from git_booster.skills import list_skills
-    skills = list_skills()
+    skills = list_skills(trigger=trigger)
     if not skills:
-        console.print("[yellow]No skills installed.[/yellow]")
+        msg = f"No skills with trigger '{trigger}'." if trigger else "No skills installed."
+        console.print(f"[yellow]{msg}[/yellow]")
+        console.print(
+            "[dim]Add skills in: ~/.config/git-booster/skills/\n"
+            "Formats: .py or .yaml[/dim]"
+        )
         return
-    t = Table(show_header=True, header_style="bold cyan")
-    t.add_column("Skill")
+
+    t = Table(show_header=True, header_style="bold cyan", box=None, padding=(0, 1))
+    t.add_column("Name",    style="cyan")
+    t.add_column("Trigger", style="dim")
+    t.add_column("Source",  style="dim")
     t.add_column("Description")
-    for name, mod in sorted(skills.items()):
-        t.add_row(name, getattr(mod, "DESCRIPTION", "—"))
+    for name, skill in sorted(skills.items()):
+        t.add_row(
+            name,
+            skill.trigger,
+            skill.source,
+            skill.description or "—",
+        )
     console.print(t)
+    console.print(
+        f"\n[dim]User skills dir: ~/.config/git-booster/skills/   "
+        f"Formats: .py  .yaml[/dim]"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -175,11 +212,21 @@ def cmd_skills_list():
 @click.argument("args", nargs=-1)
 @click.option("--path", "-p", default=None, help="Repository path (default: cwd)")
 def cmd_skill_run(name, args, path):
-    """Run an AI skill by name. Example: gai skill explain main.py"""
+    """Run a skill by name.
+
+    \b
+    Examples:
+      gai skill explain main.py
+      gai skill hello
+      gai skill deploy
+    """
     from git_booster.skills import get_skill
     skill = get_skill(name)
     if skill is None:
-        console.print(f"[red]Unknown skill:[/red] {name}  (run [bold]gai skills[/bold] to list available)")
+        console.print(
+            f"[red]Unknown skill:[/red] {name}\n"
+            "Run [bold]gai skills[/bold] to see available skills."
+        )
         raise SystemExit(1)
     try:
         skill.run(list(args), path=path)

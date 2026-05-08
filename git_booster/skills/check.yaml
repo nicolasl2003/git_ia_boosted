@@ -1,0 +1,22 @@
+# check.yaml — example YAML skill
+#
+# Fields
+# ──────
+# name:        skill name used in `gai skill <name>`
+# description: shown in `gai skills list`
+# trigger:     when this skill runs automatically
+#              manual      → only via `gai skill <name>`
+#              pre-commit  → before every `gai commit`
+#              post-commit → after every `gai commit`
+#              post-push   → after every successful push
+# action:      shell command or multi-line script to execute
+
+name:        check
+description: "Run git status + log before a commit (pre-commit example)"
+trigger:     pre-commit
+action: |
+  echo "=== git status ==="
+  git status --short
+  echo ""
+  echo "=== last 3 commits ==="
+  git log --oneline -3

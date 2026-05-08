@@ -4,8 +4,8 @@ asks the user to validate/modify, then commits and optionally pushes.
 """
 
 import os
-import subprocess
 import tempfile
+import subprocess  # used only for $EDITOR
 
 from rich.console import Console
 from rich.panel import Panel
@@ -34,27 +34,8 @@ def _edit_in_editor(message: str) -> str:
 
 def _get_remotes(cwd: str) -> list[str]:
     """Return list of configured git remotes."""
-    try:
-        result = subprocess.run(
-            ["git", "remote"],
-            cwd=cwd, capture_output=True, text=True
-        )
-        return [r for r in result.stdout.splitlines() if r.strip()]
-    except Exception:
-        return []
-
-
-def _push(remote: str, branch: str, cwd: str) -> None:
-    """Push to a remote and display result."""
-    with console.status(f"[bold cyan]Pushing to {remote}/{branch}...[/bold cyan]"):
-        result = subprocess.run(
-            ["git", "push", remote, branch],
-            cwd=cwd, capture_output=True, text=True
-        )
-    if result.returncode == 0:
-        console.print(f"[green]Pushed to {remote}/{branch}.[/green]")
-    else:
-        console.print(f"[red]Push failed:[/red] {result.stderr.strip()}")
+    result = git._run(["git", "remote"], cwd=cwd, check=False)
+    return [r for r in result.stdout.splitlines() if r.strip()]
 
 
 def run(path: str | None = None, no_confirm: bool = False) -> None:
@@ -137,7 +118,7 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
     output = git.commit(final_message, cwd)
     console.print(f"[green]{output}[/green]")
 
-    # ---- 5. Push (optional) --------------------------------------------------
+    # ---- 5. Push (optional, with auto error-fix) -----------------------------
     remotes = _get_remotes(cwd)
     if not remotes:
         return
@@ -145,22 +126,5 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
     if not Confirm.ask("[bold]Push to remote?[/bold]", default=False):
         return
 
-    branch = git.get_branch(cwd)
-
-    if len(remotes) == 1:
-        _push(remotes[0], branch, cwd)
-    else:
-        console.print("[bold]Available remotes:[/bold]")
-        for i, r in enumerate(remotes, 1):
-            console.print(f"  [cyan]{i}.[/cyan] {r}")
-        console.print(f"  [cyan]{len(remotes) + 1}.[/cyan] all")
-
-        choices = [str(i) for i in range(1, len(remotes) + 2)]
-        pick = Prompt.ask("Push to which remote?", choices=choices, default="1")
-        idx = int(pick) - 1
-
-        if idx == len(remotes):
-            for r in remotes:
-                _push(r, branch, cwd)
-        else:
-            _push(remotes[idx], branch, cwd)
+    from git_booster.commands.resolve import attempt_push
+    attempt_push(cwd)

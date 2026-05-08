@@ -1,0 +1,14 @@
+# deploy.yaml — manual deployment skill example
+#
+# Customize the action block with your actual deploy commands.
+# Run with:  gai skill deploy
+
+name:        deploy
+description: "Manual deploy hook — customize action with your deploy script"
+trigger:     manual
+action: |
+  echo "Deploying..."
+  echo "Replace this action with your actual deploy command."
+  echo "  e.g. make deploy"
+  echo "  e.g. ./scripts/deploy.sh"
+  echo "  e.g. docker compose up -d --build"
