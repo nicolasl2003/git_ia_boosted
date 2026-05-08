@@ -447,6 +447,28 @@ def get_remote_default_branch(remote: str = "origin", path: Optional[str] = None
     return "main"
 
 
+def diff_commit(commit_ref: str, path: Optional[str] = None) -> str:
+    """Return the diff introduced by a specific commit."""
+    result = _run(
+        ["git", "show", "--format=", commit_ref],
+        cwd=path, check=False,
+    )
+    if result.returncode != 0:
+        raise GitError(f"Cannot show commit '{commit_ref}': {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def get_commit_info(commit_ref: str, path: Optional[str] = None) -> str:
+    """Return commit metadata (author, date, message)."""
+    result = _run(
+        ["git", "log", "-1", "--pretty=format:%H%n%an <%ae>%n%ad%n%s", commit_ref],
+        cwd=path, check=False,
+    )
+    if result.returncode != 0:
+        raise GitError(f"Cannot find commit '{commit_ref}'")
+    return result.stdout.strip()
+
+
 def walk_all_files(repo_root: str) -> list[str]:
     """Walk the repo root and return all file paths relative to repo_root,
     excluding hidden directories like .git."""

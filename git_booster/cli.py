@@ -95,14 +95,24 @@ def cmd_resolve(path):
 
 @main.command("review")
 @click.option("--path", "-p", default=None, help="Repository path (default: cwd)")
-def cmd_review(path):
-    """AI code review of staged (or unstaged) changes."""
+@click.option("--commit", "-c", default=None, metavar="REF",
+              help="Review a specific commit (e.g. HEAD~1, abc1234)")
+def cmd_review(path, commit):
+    """AI code review of staged changes, or a specific commit.
+
+    \b
+    Examples:
+      gai review                # review staged changes
+      gai review --commit HEAD~1
+      gai review -c abc1234
+    """
     from git_booster.commands import review
     try:
-        review.run(path)
+        review.run(path, commit_ref=commit)
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
+
 
 
 # ---------------------------------------------------------------------------
