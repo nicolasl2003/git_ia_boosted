@@ -1,47 +1,44 @@
 # git-booster
 
-**Local AI-powered Git - 100% private, 0% cloud, 100% automated.**
+**Local AI-powered Git — 100% private, 0% cloud, fully automated.**
 
-`git-booster` is a smart Git wrapper that uses **Ollama** to automate repetitive tasks **entirely on your machine**:
-✅ Smart commit message generation
-✅ Automatic `.gitignore` creation/optimization
-✅ AI-assisted merge conflict resolution
-✅ Intelligent code reviews
-✅ Natural language code explanations
+`git-booster` is a smart Git wrapper using **Ollama** (or Anthropic/OpenAI) to automate repetitive tasks entirely on your machine:
 
-**Zero external APIs. Zero data leaks. Zero complex setup.**
+- Smart commit message generation (Conventional Commits)
+- Automatic `.gitignore` creation and update
+- Full merge/rebase conflict resolution
+- Intelligent push-error recovery
+- Code review before commit
+- Extensible skills system (YAML or Python)
 
----
-
-
-AI-powered Git wrapper using **local Ollama** — no API key, no cloud, runs entirely on your machine.
-
-Automates commit messages, `.gitignore` generation, merge conflict resolution, and code review.
+**Zero external APIs required. Zero data leaks. No complex setup.**
 
 ---
 
 ## Commands
 
-### Native (no AI — instant, no Ollama needed)
+### Native (no AI — instant)
 
-| Command              | Description                                          |
-|----------------------|------------------------------------------------------|
-| `gai status`         | `git status` native output                           |
-| `gai rm <file>`      | Untrack file (keeps on disk)                         |
-| `gai rm <file> --hard` | Untrack + delete file from disk (with confirmation)|
-| `gai stop`           | Stop Ollama server, free memory/CPU                  |
-| `gai config`         | Interactive setup: provider, model, Ollama           |
-| `gai skills`         | List available AI skills                             |
+| Command                  | Description                                        |
+|--------------------------|----------------------------------------------------|
+| `gai status`             | `git status` native output                         |
+| `gai rm <file>`          | Untrack file (keeps it on disk)                    |
+| `gai rm <file> --hard`   | Untrack + delete from disk (with confirmation)     |
+| `gai stop`               | Stop Ollama server, free memory                    |
+| `gai config`             | Interactive setup: provider, model, keys           |
+| `gai skills`             | List all available skills                          |
+| `gai skills list`        | Same — optionally filter with `-t <trigger>`       |
 
-### AI-powered (requires Ollama running)
+### AI-powered (requires Ollama or API key)
 
-| Command              | Description                                          |
-|----------------------|------------------------------------------------------|
-| `gai add`            | `git add .` + AI-generated/updated `.gitignore`      |
-| `gai commit`         | Generate commit message → validate → commit → push   |
-| `gai resolve`        | Detect and resolve merge conflicts                   |
-| `gai review`         | Code review of staged changes                        |
-| `gai skill <name>`   | Run a specific AI skill (e.g. `gai skill explain`)   |
+| Command                  | Description                                        |
+|--------------------------|----------------------------------------------------|
+| `gai add`                | `git add .` + AI-generated/updated `.gitignore`    |
+| `gai add <file>`         | Stage specific file + update `.gitignore`          |
+| `gai commit`             | Generate commit message → validate → commit → push |
+| `gai resolve`            | Full conflict resolution + push-error recovery     |
+| `gai review`             | AI code review of staged changes                   |
+| `gai skill <name>`       | Run a skill (e.g. `gai skill explain main.py`)     |
 
 ---
 
@@ -49,95 +46,53 @@ Automates commit messages, `.gitignore` generation, merge conflict resolution, a
 
 - Python 3.10+
 - Git
-- `curl` (for Ollama auto-install)
-
-> Ollama is installed and started **automatically** on first run. No manual setup needed.
+- Ollama (auto-installed on first run) **or** an Anthropic/OpenAI API key
 
 ---
 
 ## Installation
 
-### 1. Clone and add to your shell
-
 ```bash
+# 1. Clone
 git clone <repo_url> ~/git_booster
-echo 'alias gai="$HOME/git_booster/gai"' >> ~/.zshrc
-source ~/.zshrc
-```
 
-### 2. First run — fully automatic
+# 2. Create virtualenv and install
+cd ~/git_booster
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 
-```bash
+# 3. Configure (provider, model, keys)
 gai config
 ```
 
-On first run, `gai` automatically:
-1. Creates the Python `.venv` and installs dependencies
-2. Installs Ollama if not present (via official install script)
-3. Starts the Ollama server in the background
-4. Pulls the configured model (default: `qwen2.5-coder:3b`)
-
-Everything is handled without any manual commands. You only need to run `gai config` once to choose your model.
-
-### 3. That's it
-
-```bash
-# From any git repo:
-gai commit
-```
+On first `gai config`, choose your provider:
+- **Ollama** (recommended) — local, free, private
+- **Anthropic** — Claude via API key
+- **OpenAI / OpenRouter** — GPT or any OpenAI-compatible endpoint
 
 ---
 
 ## Configuration
 
-Settings are stored in `~/.config/git-booster/config.env` (created by `gai config`).
+Settings stored in `~/.config/git-booster/config.env`.
 
-| Variable            | Default                  | Description                      |
-|---------------------|--------------------------|----------------------------------|
-| `GAI_PROVIDER`      | `ollama`                 | AI provider                      |
-| `OLLAMA_HOST`       | `http://localhost:11434` | Ollama server URL                |
-| `GAI_MODEL`         | `llama3.2`               | Model to use                     |
-| `ANTHROPIC_API_KEY` | —                        | Only if using Anthropic provider |
-| `OPENAI_API_KEY`    | —                        | Only if using OpenAI provider    |
+| Variable            | Default                    | Description                      |
+|---------------------|----------------------------|----------------------------------|
+| `GAI_PROVIDER`      | `ollama`                   | `ollama` / `anthropic` / `openai`|
+| `GAI_MODEL`         | `llama3.2`                 | Model name                       |
+| `OLLAMA_HOST`       | `http://localhost:11434`   | Ollama server URL                |
+| `ANTHROPIC_API_KEY` | —                          | Required for Anthropic provider  |
+| `OPENAI_API_KEY`    | —                          | Required for OpenAI provider     |
+| `OPENAI_BASE_URL`   | `https://api.openai.com/v1`| Override for OpenRouter etc.     |
 
-The `gai` wrapper script automatically loads this file. No need to export variables manually.
-
----
-
-## `gai config` — interactive setup
-
-```
-git-booster — configuration
-────────────────────────────
-Current configuration
-  Provider    ollama
-  Model       qwen2.5-coder:3b
-  Ollama host http://localhost:11434
-
-Select AI provider:
-  1. ollama       Local Ollama (no API key, recommended)
-  2. anthropic    Anthropic Claude (API key required)
-  3. openai       OpenAI (API key required)
-
-Provider [1/2/3] (1):
-
-Select a model:
-  1. qwen2.5-coder:3b    Best for code — GTX 1050 Ti (4GB) ~2GB VRAM
-  2. qwen2.5-coder:1.5b  Lightest — GTX 1050 2GB / CPU only
-  3. llama3.2:3b         General purpose — 4GB VRAM
-  4. mistral:7b          Powerful — needs 8GB+ VRAM
-  5. Enter custom model name
-
-Configuration saved to ~/.config/git-booster/config.env
-```
+Environment variables always take priority over the config file.
 
 ---
 
 ## `gai commit` — workflow
 
 ```
-[ git-booster ] provider: ollama | model: qwen2.5-coder:3b | host: http://localhost:11434
-
 A.I is processing...
 
 ┌─ Generated commit message ──────────────────────────┐
@@ -147,63 +102,206 @@ A.I is processing...
 What do you want to do? [commit/edit/regenerate/abort] (commit):
 ```
 
-| Choice       | Action                                                    |
-|--------------|-----------------------------------------------------------|
-| `commit`     | Commit as-is                                              |
-| `edit`       | Open message in `$EDITOR` (nano by default)               |
-| `regenerate` | Describe how you want the commit, AI rewrites it          |
-| `abort`      | Cancel                                                    |
+| Choice       | Action                                           |
+|--------------|--------------------------------------------------|
+| `commit`     | Commit as-is                                     |
+| `edit`       | Open in `$EDITOR` (nano by default)              |
+| `regenerate` | Describe how to rewrite → AI regenerates         |
+| `abort`      | Cancel                                           |
 
-After commit, if remotes are configured:
+After commit, if a remote is configured:
 ```
 Push to remote? [y/N]
+→ git push origin main
+✓ Push succeeded.
 ```
-If multiple remotes exist, you can choose one or push to all.
+Push errors are handled automatically (see `gai resolve`).
 
 ---
 
-## Typical workflow
+## `gai resolve` — full conflict resolution
+
+`gai resolve` handles the complete cycle: conflicts → resolution → push, in a **single execution**.
+
+### What it does
+
+```
+gai resolve
+```
+
+1. **Detects the current state** of the repo:
+   - Rebase in progress with conflicts
+   - Merge conflicts in working tree
+   - Clean tree → attempts push directly
+
+2. **Stashes uncommitted changes** automatically before any pull, restores them after.
+
+3. **Resolves all conflicts in one AI pass** — no repeated prompts per block.
+
+4. **Continues the rebase** automatically after resolution (up to 3 steps).
+
+5. **Pushes** after a clean resolution.
+
+### Push error recovery
+
+When a push fails, `gai resolve` detects the cause and fixes it automatically:
+
+| Error                      | Automatic fix                                       |
+|----------------------------|-----------------------------------------------------|
+| Remote ahead (fetch first) | `git pull` (auto rebase/merge) → re-push            |
+| No upstream branch         | `git push --set-upstream origin <branch>`           |
+| Bad refspec                | List remote branches, pick target or create new     |
+| Authentication failure     | Instructions: SSH key, PAT, credentials             |
+| Remote not found           | Instructions: check URL, network, VPN               |
+| Unknown error              | Show raw error + AI explanation                     |
+
+### Strategy selection
+
+The rebase/merge strategy is chosen automatically:
+
+| Condition                        | Strategy |
+|----------------------------------|----------|
+| Linear history (no merge commits)| rebase   |
+| Single local commit              | rebase   |
+| Merge commits in history         | merge    |
+
+The recommended strategy is shown before execution. You can override it.
+
+### Anti-loop guard
+
+If conflicts keep appearing after repeated pulls (e.g. circular dependencies), `gai resolve` stops after **3 attempts** and shows clear instructions for manual resolution.
+
+### Example workflow
 
 ```bash
-# 1. Check what changed (instant, no AI)
-gai status
+# Scenario: you have uncommitted changes + remote is ahead
 
-# 2. Stage and generate .gitignore
-gai add
+$ gai resolve
 
-# 3. (Optional) Review before committing
-gai review
+── Push — main → origin ────────────────────────────────
+→ git push origin main
 
-# 4. Commit with AI message + push
-gai commit
+Push failed  (remote ahead)
+Remote has commits you don't have.
+Pull now? [Y/n]:
 
-# 5. After a tricky merge
-gai resolve
+Uncommitted changes stashed → stash@{0}
 
-# 6. Free resources when done
-gai stop
+Recommended: rebase  (linear history)
+  1. rebase  (recommended)
+  2. merge
+  q. abort
+Strategy [1/2/q] (1): 1
+
+→ git pull --rebase origin main
+Pull succeeded.
+Stash restored.
+
+→ Retrying push…
+✓ Push succeeded.
 ```
 
 ---
 
 ## Skills system
 
-Skills are modular AI capabilities. Drop a `.py` file in `git_booster/skills/` and it's auto-discovered.
+Skills extend `gai` with custom commands. Two formats are supported: **YAML** (simple) and **Python** (advanced).
 
-```bash
-gai skills                    # list available skills
-gai skill explain             # explain current staged diff
-gai skill explain main.py     # explain a specific file
+### YAML skill
+
+Create a `.yaml` file in `~/.config/git-booster/skills/`:
+
+```yaml
+# ~/.config/git-booster/skills/deploy.yaml
+
+name:        deploy
+description: "Deploy to production"
+trigger:     manual          # manual | pre-commit | post-commit | post-push
+action: |
+  echo "Deploying..."
+  make deploy
+  echo "Done."
 ```
 
-**Adding a custom skill** — create `git_booster/skills/myskill.py`:
+### Python skill
+
+Create a `.py` file in `~/.config/git-booster/skills/`:
 
 ```python
-NAME        = "myskill"
-DESCRIPTION = "Does something useful"
+# ~/.config/git-booster/skills/lint.py
+
+NAME        = "lint"
+DESCRIPTION = "Run linter before commit"
+TRIGGER     = "pre-commit"
 
 def run(args: list[str], path: str | None = None) -> None:
-    ...
+    import subprocess
+    subprocess.run(["flake8", "."], cwd=path)
+```
+
+### Skill fields
+
+| Field         | Required | Values                                          |
+|---------------|----------|-------------------------------------------------|
+| `name`        | yes      | Command name used in `gai skill <name>`         |
+| `description` | no       | Shown in `gai skills list`                      |
+| `trigger`     | no       | `manual` (default), `pre-commit`, `post-commit`, `post-push` |
+| `action`      | yes (YAML)| Shell command or multi-line script             |
+
+### Commands
+
+```bash
+gai skills                      # list all skills
+gai skills list                 # same
+gai skills list -t pre-commit   # filter by trigger
+
+gai skill deploy                # run a skill manually
+gai skill explain main.py       # run explain skill on a file
+```
+
+### Auto-discovery
+
+Skills are loaded from two locations (no registration needed):
+
+| Location                              | Who adds it   |
+|---------------------------------------|---------------|
+| `git_booster/skills/`                 | Built-in      |
+| `~/.config/git-booster/skills/`       | Your custom skills |
+
+### Built-in skills
+
+| Name      | Trigger    | Description                              |
+|-----------|------------|------------------------------------------|
+| `explain` | manual     | AI explanation of a file or staged diff  |
+| `hello`   | manual     | Example skill / template                 |
+| `check`   | pre-commit | Show `git status` + last 3 commits       |
+| `deploy`  | manual     | Deployment hook template                 |
+
+---
+
+## Typical workflow
+
+```bash
+# 1. Check state (instant)
+gai status
+
+# 2. Stage everything + generate .gitignore
+gai add
+
+# 3. Optional: review before committing
+gai review
+
+# 4. Commit with AI message + push
+gai commit
+
+# 5. Handle conflicts or push errors
+gai resolve
+
+# 6. Run a custom skill
+gai skill deploy
+
+# 7. Free resources
+gai stop
 ```
 
 ---
@@ -212,26 +310,28 @@ def run(args: list[str], path: str | None = None) -> None:
 
 ```
 git_booster/
-├── gai                          # Shell wrapper — auto .venv, Ollama, model pull
 ├── git_booster/
 │   ├── cli.py                   # CLI entry point (click)
 │   ├── core/
 │   │   └── git.py               # All git subprocess calls
 │   ├── ai/
-│   │   ├── client.py            # Ollama HTTP client (no external deps)
+│   │   ├── client.py            # Multi-provider client (Ollama/Anthropic/OpenAI)
 │   │   └── prompts.py           # Prompt templates
 │   ├── skills/
-│   │   ├── __init__.py          # Auto-discovery engine
-│   │   └── explain.py           # Built-in skill: explain file/diff
+│   │   ├── __init__.py          # Auto-discovery engine (Python + YAML)
+│   │   ├── explain.py           # Built-in: explain file or diff
+│   │   ├── hello.py             # Built-in: template / smoke-test
+│   │   ├── check.yaml           # Built-in: pre-commit status check
+│   │   └── deploy.yaml          # Built-in: deploy hook template
 │   └── commands/
-│       ├── config.py            # gai config
 │       ├── add.py               # gai add
-│       ├── status.py            # gai status (native)
 │       ├── commit.py            # gai commit
-│       ├── rm.py                # gai rm
-│       ├── stop.py              # gai stop
+│       ├── config.py            # gai config
 │       ├── resolve.py           # gai resolve
-│       └── review.py            # gai review
+│       ├── review.py            # gai review
+│       ├── rm.py                # gai rm
+│       ├── status.py            # gai status
+│       └── stop.py              # gai stop
 ├── .env.example
 └── pyproject.toml
 ```

@@ -13,12 +13,18 @@ class GitError(Exception):
     pass
 
 
-def _run(args: list[str], cwd: Optional[str] = None, check: bool = True) -> subprocess.CompletedProcess:
+def _run(
+    args: list[str],
+    cwd: Optional[str] = None,
+    check: bool = True,
+    env: Optional[dict] = None,
+) -> subprocess.CompletedProcess:
     """Run a git command and return the CompletedProcess result."""
     try:
         result = subprocess.run(
             args,
             cwd=cwd or os.getcwd(),
+            env=env,
             capture_output=True,
             text=True,
         )
@@ -151,7 +157,7 @@ def get_log(n: int = 10, path: Optional[str] = None) -> str:
         check=False,
     )
     if result.returncode != 0:
-        return ""   # repo has no commits yet
+        return ""
     return result.stdout.strip()
 
 
@@ -161,7 +167,6 @@ def get_branch(path: Optional[str] = None) -> str:
     result = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=path, check=False)
     if result.returncode == 0 and result.stdout.strip() not in ("", "HEAD"):
         return result.stdout.strip()
-    # No commits yet — read the branch name from .git/HEAD
     repo_root = get_repo_root(path)
     head_file = Path(repo_root) / ".git" / "HEAD"
     if head_file.exists():
@@ -213,53 +218,45 @@ def push(remote: str = "origin", branch: str = "", set_upstream: bool = False,
 
 
 # Push error categories returned by parse_push_error()
-PUSH_ERR_FETCH_FIRST   = "fetch_first"    # remote has commits we don't have
-PUSH_ERR_NO_UPSTREAM   = "no_upstream"    # branch has no upstream tracking
-PUSH_ERR_REFSPEC       = "refspec"        # unknown/bad branch name on remote
-PUSH_ERR_REJECTED      = "rejected"       # non-fast-forward rejection
-PUSH_ERR_AUTH          = "auth"           # authentication failure
-PUSH_ERR_NO_REMOTE     = "no_remote"      # remote not found / wrong URL
+PUSH_ERR_FETCH_FIRST   = "fetch_first"
+PUSH_ERR_NO_UPSTREAM   = "no_upstream"
+PUSH_ERR_REFSPEC       = "refspec"
+PUSH_ERR_REJECTED      = "rejected"
+PUSH_ERR_AUTH          = "auth"
+PUSH_ERR_NO_REMOTE     = "no_remote"
 PUSH_ERR_UNKNOWN       = "unknown"
 
 
 def parse_push_error(output: str) -> str:
-    """Classify a git push error string into one of the PUSH_ERR_* constants.
-    Checks are ordered from most-specific to least-specific."""
+    """Classify a git push error string into one of the PUSH_ERR_* constants."""
     low = output.lower()
 
-    # Authentication / permissions
     if ("authentication failed" in low or "could not read username" in low
             or "permission denied" in low or "access denied" in low):
         return PUSH_ERR_AUTH
 
-    # Remote unreachable
     if ("repository not found" in low
             or "does not appear to be a git repository" in low
             or "could not resolve host" in low
             or "connection refused" in low):
         return PUSH_ERR_NO_REMOTE
 
-    # No upstream set
     if ("no upstream branch" in low or "--set-upstream" in low
             or "set-upstream" in low):
         return PUSH_ERR_NO_UPSTREAM
 
-    # Bad refspec (branch name unknown on remote)
     if ("src refspec" in low or "does not match any" in low
             or "invalid refspec" in low):
         return PUSH_ERR_REFSPEC
 
-    # Fetch first (behind remote) — most common rejection
     if ("fetch first" in low
             or ("updates were rejected" in low and "behind" in low)
             or ("updates were rejected" in low and "fetch first" in low)):
         return PUSH_ERR_FETCH_FIRST
 
-    # Non-fast-forward without "fetch first" hint → same fix
     if "non-fast-forward" in low:
         return PUSH_ERR_REJECTED
 
-    # Generic rejected → treat same as fetch_first
     if "rejected" in low:
         return PUSH_ERR_FETCH_FIRST
 
@@ -355,7 +352,6 @@ def stash_push(message: str = "gai-resolve-autostash", path: Optional[str] = Non
     out = (result.stdout + result.stderr).strip()
     if result.returncode != 0:
         return False, out
-    # Extract stash ref from output, e.g. "Saved working directory ... stash@{0}"
     for line in out.splitlines():
         if "stash@{" in line:
             start = line.index("stash@{")
@@ -378,9 +374,8 @@ def stash_drop(ref: str = "stash@{0}", path: Optional[str] = None) -> None:
 
 def rebase_continue(path: Optional[str] = None) -> tuple[bool, str]:
     """Continue an in-progress rebase (after conflicts resolved)."""
-    import os as _os
-    env = {**_os.environ, "GIT_EDITOR": "true"}  # skip editor prompt
-    result = _run(["git", "rebase", "--continue"], cwd=path, check=False)
+    env = {**os.environ, "GIT_EDITOR": "true"}
+    result = _run(["git", "rebase", "--continue"], cwd=path, check=False, env=env)
     out = (result.stdout + result.stderr).strip()
     return result.returncode == 0, out
 
@@ -430,8 +425,7 @@ def count_local_commits(branch: str, remote: str = "origin", path: Optional[str]
 
 
 def has_merge_commits(path: Optional[str] = None, n: int = 20) -> bool:
-    """Return True if the last n commits contain merge commits (2+ parents).
-    Used to decide rebase vs merge strategy."""
+    """Return True if the last n commits contain merge commits (2+ parents)."""
     result = _run(
         ["git", "log", f"-{n}", "--merges", "--oneline"],
         cwd=path, check=False,
@@ -460,7 +454,6 @@ def walk_all_files(repo_root: str) -> list[str]:
     root = Path(repo_root)
     for p in root.rglob("*"):
         if p.is_file():
-            # Skip .git internals
             parts = p.relative_to(root).parts
             if ".git" not in parts:
                 all_files.append(str(p.relative_to(root)))

@@ -1,5 +1,4 @@
-"""
-`gai resolve` — single-pass, fully automatic conflict & push-error resolution.
+"""`gai resolve` — single-pass, fully automatic conflict & push-error resolution.
 
 Workflow
 ────────
@@ -36,17 +35,16 @@ console = Console()
 MAX_PULL_ATTEMPTS = 3   # anti-loop: abort after this many pull retries
 _pull_attempts   = 0   # module-level counter, reset at run() entry
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Stash guard — save/restore uncommitted work
 # ─────────────────────────────────────────────────────────────────────────────
 
 class _StashGuard:
-    """Context manager: stash before a pull, pop after."""
+    """Save/restore uncommitted changes around a pull."""
 
     def __init__(self, cwd: str):
-        self.cwd   = cwd
-        self.ref   = None
+        self.cwd    = cwd
+        self.ref    = None
         self.active = False
 
     def save(self) -> bool:
@@ -72,10 +70,9 @@ class _StashGuard:
         else:
             console.print(
                 f"[yellow]Could not restore stash ({self.ref}).[/yellow]\n"
-                f"[dim]Run manually:  git stash pop[/dim]"
+                "[dim]Run manually:  git stash pop[/dim]"
             )
         self.active = False
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # AI conflict resolver — single pass
@@ -91,7 +88,7 @@ def _resolve_conflict_files(conflict_files: list[str], repo_root: str, cwd: str)
         console.print(f"[dim]{blocks} conflict block(s)[/dim]")
 
         if not Confirm.ask(f"Let AI resolve [bold]{filepath}[/bold]?", default=True):
-            console.print(f"[yellow]Skipped.[/yellow]")
+            console.print("[yellow]Skipped.[/yellow]")
             continue
 
         with console.status(f"[bold yellow]AI resolving {filepath}...[/bold yellow]"):
@@ -117,10 +114,9 @@ def _resolve_conflict_files(conflict_files: list[str], repo_root: str, cwd: str)
             console.print(f"[green]✓ {filepath} staged.[/green]")
             resolved_count += 1
         else:
-            console.print(f"[yellow]Skipped.[/yellow]")
+            console.print("[yellow]Skipped.[/yellow]")
 
     return resolved_count
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Rebase continuation
@@ -130,11 +126,10 @@ def _continue_rebase(cwd: str, repo_root: str) -> bool:
     """After resolving conflicts in a rebase, continue it (up to 3 steps)."""
     for step in range(1, 4):
         if not git.is_rebasing(cwd):
-            return True  # rebase finished
+            return True  # rebase finished cleanly
         if git.has_merge_conflicts(cwd):
-            # More conflicts appeared in the next patch
             console.print(f"[yellow]New conflicts in rebase step {step}.[/yellow]")
-            files = git.get_conflict_files(cwd)
+            files    = git.get_conflict_files(cwd)
             resolved = _resolve_conflict_files(files, repo_root, cwd)
             if resolved < len(files):
                 console.print("[red]Could not resolve all conflicts. Aborting rebase.[/red]")
@@ -156,7 +151,6 @@ def _continue_rebase(cwd: str, repo_root: str) -> bool:
         return False
     return True
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Strategy auto-detection
 # ─────────────────────────────────────────────────────────────────────────────
@@ -169,6 +163,38 @@ def _detect_best_strategy(cwd: str, remote: str, branch: str) -> tuple[str, str]
         return "rebase", "single local commit"
     return "merge", "non-linear history"
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Resolve conflicts introduced by a pull
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _resolve_after_pull(cwd: str, strategy: str) -> bool:
+    """Resolve conflicts left by a pull, then finalise the operation.
+
+    NOTE: stash.restore() must be called by the caller AFTER this returns,
+    not inside a finally block, so the rebase can complete first.
+    """
+    repo_root      = git.get_repo_root(cwd)
+    conflict_files = git.get_conflict_files(cwd)
+
+    console.print(f"[bold red]{len(conflict_files)} conflict(s):[/bold red]")
+    for f in conflict_files:
+        console.print(f"  [yellow]• {f}[/yellow]")
+    console.print()
+
+    resolved = _resolve_conflict_files(conflict_files, repo_root, cwd)
+
+    if resolved < len(conflict_files):
+        remaining = len(conflict_files) - resolved
+        console.print(f"[yellow]{remaining} file(s) not resolved — fix manually.[/yellow]")
+        _offer_abort(cwd, strategy)
+        return False
+
+    console.print(f"[bold green]All {resolved} conflict(s) resolved.[/bold green]")
+
+    if strategy == "rebase" and git.is_rebasing(cwd):
+        return _continue_rebase(cwd, repo_root)
+
+    return True
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Pull with anti-loop guard
@@ -176,7 +202,11 @@ def _detect_best_strategy(cwd: str, remote: str, branch: str) -> tuple[str, str]
 
 def _pull_with_guard(cwd: str, remote: str, branch: str, auto: bool = False) -> bool:
     """Pull, resolve any post-pull conflicts, return True on clean success.
-    Aborts with an error message if MAX_PULL_ATTEMPTS exceeded."""
+
+    Stash is saved before the pull and restored AFTER the rebase/merge
+    is fully complete — not inside a finally block — so the rebase
+    can finish before uncommitted changes are reapplied.
+    """
     global _pull_attempts
     _pull_attempts += 1
 
@@ -213,57 +243,38 @@ def _pull_with_guard(cwd: str, remote: str, branch: str, auto: bool = False) -> 
             (choice == "2" and strategy == "merge")
         )
 
+    # ── Stash uncommitted changes BEFORE pull ────────────────────────────────
     stash = _StashGuard(cwd)
     stash.save()
 
-    try:
-        label = "rebase" if use_rebase else "merge"
-        ok, out = git.pull(remote, branch, rebase=use_rebase, path=cwd)
-        if out:
-            console.print(f"[dim]{out[:400]}[/dim]")
+    label = "rebase" if use_rebase else "merge"
+    ok, out = git.pull(remote, branch, rebase=use_rebase, path=cwd)
+    if out:
+        console.print(f"[dim]{out[:400]}[/dim]")
 
-        if ok:
-            console.print("[green]Pull succeeded.[/green]")
-            if git.has_merge_conflicts(cwd):
-                console.print("[bold red]Pull introduced conflicts.[/bold red]")
-                return _resolve_after_pull(cwd, label)
-            return True
+    if ok:
+        console.print("[green]Pull succeeded.[/green]")
+        if git.has_merge_conflicts(cwd):
+            console.print("[bold red]Pull introduced conflicts.[/bold red]")
+            result = _resolve_after_pull(cwd, label)
         else:
-            if git.has_merge_conflicts(cwd):
-                console.print("[bold red]Conflicts after pull.[/bold red]")
-                return _resolve_after_pull(cwd, label)
-            console.print(f"[red]Pull failed.[/red]")
+            result = True
+    else:
+        if git.has_merge_conflicts(cwd):
+            console.print("[bold red]Conflicts after pull.[/bold red]")
+            result = _resolve_after_pull(cwd, label)
+        else:
+            console.print("[red]Pull failed.[/red]")
             _offer_abort(cwd, label)
-            return False
-    finally:
-        stash.restore()
+            result = False
 
+    # ── Restore stash AFTER rebase/merge is fully complete ──────────────────
+    stash.restore()
+    return result
 
-def _resolve_after_pull(cwd: str, strategy: str) -> bool:
-    """Resolve conflicts left by a pull, then finalise the operation."""
-    repo_root      = git.get_repo_root(cwd)
-    conflict_files = git.get_conflict_files(cwd)
-
-    console.print(f"[bold red]{len(conflict_files)} conflict(s):[/bold red]")
-    for f in conflict_files:
-        console.print(f"  [yellow]• {f}[/yellow]")
-    console.print()
-
-    resolved = _resolve_conflict_files(conflict_files, repo_root, cwd)
-
-    if resolved < len(conflict_files):
-        remaining = len(conflict_files) - resolved
-        console.print(f"[yellow]{remaining} file(s) not resolved — fix manually.[/yellow]")
-        _offer_abort(cwd, strategy)
-        return False
-
-    console.print(f"[bold green]All {resolved} conflict(s) resolved.[/bold green]")
-
-    if strategy == "rebase" and git.is_rebasing(cwd):
-        return _continue_rebase(cwd, repo_root)
-
-    return True
-
+# ─────────────────────────────────────────────────────────────────────────────
+# Abort helper
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _offer_abort(cwd: str, strategy: str) -> None:
     op = "rebase" if strategy == "rebase" else "merge"
@@ -276,7 +287,6 @@ def _offer_abort(cwd: str, strategy: str) -> None:
             f"[green]{op.capitalize()} aborted.[/green]" if ok
             else f"[red]Could not abort {op}:[/red] {msg}"
         )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Push error handlers
@@ -298,7 +308,6 @@ def _handle_fetch_first(cwd: str, remote: str, branch: str, err: str) -> bool:
         return True
     return _handle_push_error(cwd, remote, branch, out, retry=False)
 
-
 def _handle_no_upstream(cwd: str, remote: str, branch: str, err: str) -> bool:
     console.print(
         f"[bold yellow]No upstream:[/bold yellow] branch [cyan]{branch}[/cyan] "
@@ -313,7 +322,6 @@ def _handle_no_upstream(cwd: str, remote: str, branch: str, err: str) -> bool:
         return True
     console.print(f"[red]Failed:[/red] {out}")
     return False
-
 
 def _handle_refspec(cwd: str, remote: str, branch: str, err: str) -> bool:
     console.print(
@@ -352,7 +360,6 @@ def _handle_refspec(cwd: str, remote: str, branch: str, err: str) -> bool:
     console.print(f"[red]Failed:[/red] {out}")
     return False
 
-
 def _handle_auth(cwd: str, remote: str, branch: str, err: str) -> bool:
     r = git._run(["git", "remote", "get-url", remote], cwd=cwd, check=False)
     url = r.stdout.strip() if r.returncode == 0 else "unknown"
@@ -367,7 +374,6 @@ def _handle_auth(cwd: str, remote: str, branch: str, err: str) -> bool:
     ))
     return False
 
-
 def _handle_no_remote(cwd: str, remote: str, branch: str, err: str) -> bool:
     console.print(Panel(
         f"[bold red]Remote unreachable[/bold red]\n\n"
@@ -379,7 +385,6 @@ def _handle_no_remote(cwd: str, remote: str, branch: str, err: str) -> bool:
         title="Push — Remote error", border_style="red",
     ))
     return False
-
 
 def _handle_unknown(cwd: str, remote: str, branch: str, err: str) -> bool:
     console.print(Panel(err[:500], title="[red]Push error[/red]", border_style="red"))
@@ -393,7 +398,6 @@ def _handle_unknown(cwd: str, remote: str, branch: str, err: str) -> bool:
         )
     console.print(Panel(explanation, title="AI analysis", border_style="cyan"))
     return False
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Push error dispatcher
@@ -419,12 +423,10 @@ _ERR_LABELS = {
     git.PUSH_ERR_UNKNOWN:     "unknown",
 }
 
-
 def _handle_push_error(cwd: str, remote: str, branch: str, err: str, retry: bool = True) -> bool:
     etype = git.parse_push_error(err)
     console.print(f"\n[bold red]Push failed[/bold red]  [dim]({_ERR_LABELS.get(etype, etype)})[/dim]")
     return _HANDLERS.get(etype, _handle_unknown)(cwd, remote, branch, err)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Public: attempt push with full error recovery
@@ -443,7 +445,6 @@ def attempt_push(cwd: str) -> bool:
         console.print("[bold green]✓ Push succeeded.[/bold green]")
         return True
     return _handle_push_error(cwd, remote, branch, out)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Main entry point
