@@ -197,6 +197,83 @@ def rm_file(filepath: str, path: Optional[str] = None, force: bool = False, cach
     _run(args, cwd=path)
 
 
+def fetch(remote: str = "origin", path: Optional[str] = None) -> tuple[bool, str]:
+    """Fetch from remote. Returns (success, error_message)."""
+    result = _run(["git", "fetch", remote], cwd=path, check=False)
+    return result.returncode == 0, result.stderr.strip()
+
+
+def get_remote(path: Optional[str] = None) -> str | None:
+    """Return the first configured remote, or None."""
+    result = _run(["git", "remote"], cwd=path, check=False)
+    remotes = [r for r in result.stdout.splitlines() if r.strip()]
+    return remotes[0] if remotes else None
+
+
+def is_behind_remote(branch: str, remote: str = "origin", path: Optional[str] = None) -> bool:
+    """Return True if local branch is behind its remote counterpart."""
+    result = _run(
+        ["git", "rev-list", "--count", f"HEAD..{remote}/{branch}"],
+        cwd=path, check=False,
+    )
+    if result.returncode != 0:
+        return False
+    try:
+        return int(result.stdout.strip()) > 0
+    except ValueError:
+        return False
+
+
+def is_ahead_of_remote(branch: str, remote: str = "origin", path: Optional[str] = None) -> bool:
+    """Return True if local branch has commits not on remote."""
+    result = _run(
+        ["git", "rev-list", "--count", f"{remote}/{branch}..HEAD"],
+        cwd=path, check=False,
+    )
+    if result.returncode != 0:
+        return False
+    try:
+        return int(result.stdout.strip()) > 0
+    except ValueError:
+        return False
+
+
+def pull(remote: str = "origin", branch: str = "HEAD", rebase: bool = False,
+         path: Optional[str] = None) -> tuple[bool, str]:
+    """Pull from remote. Returns (success, output)."""
+    args = ["git", "pull", remote, branch]
+    if rebase:
+        args.insert(2, "--rebase")
+    result = _run(args, cwd=path, check=False)
+    out = (result.stdout + result.stderr).strip()
+    return result.returncode == 0, out
+
+
+def abort_merge(path: Optional[str] = None) -> tuple[bool, str]:
+    """Abort an in-progress merge."""
+    result = _run(["git", "merge", "--abort"], cwd=path, check=False)
+    return result.returncode == 0, result.stderr.strip()
+
+
+def abort_rebase(path: Optional[str] = None) -> tuple[bool, str]:
+    """Abort an in-progress rebase."""
+    result = _run(["git", "rebase", "--abort"], cwd=path, check=False)
+    return result.returncode == 0, result.stderr.strip()
+
+
+def is_merging(path: Optional[str] = None) -> bool:
+    """Return True if a merge is in progress."""
+    repo_root = get_repo_root(path)
+    return (Path(repo_root) / ".git" / "MERGE_HEAD").exists()
+
+
+def is_rebasing(path: Optional[str] = None) -> bool:
+    """Return True if a rebase is in progress."""
+    repo_root = get_repo_root(path)
+    git_dir = Path(repo_root) / ".git"
+    return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
+
+
 def walk_all_files(repo_root: str) -> list[str]:
     """Walk the repo root and return all file paths relative to repo_root,
     excluding hidden directories like .git."""

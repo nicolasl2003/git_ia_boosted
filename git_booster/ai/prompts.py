@@ -51,16 +51,36 @@ Rules:
 - Do not ignore source files.
 """
 
+GITIGNORE_RULES_SYSTEM = """\
+You are a DevOps engineer adding missing rules to an existing .gitignore.
+Rules:
+- Output ONLY the new rules to append, no explanation, no markdown fences.
+- Group new rules under a comment header (e.g. # Python, # Node).
+- Do NOT repeat rules already present in the existing file.
+- If no new rules are needed, output exactly: NOTHING
+"""
+
 def gitignore_prompt(file_list: list[str], existing_gitignore: str = "") -> tuple[str, str]:
-    files_str = "\n".join(file_list[:500])   # cap to avoid token explosion
-    existing = f"\nExisting .gitignore:\n```\n{existing_gitignore}\n```" if existing_gitignore else ""
+    files_str = "\n".join(file_list[:300])   # cap tokens
+    existing = f"\nExisting .gitignore:\n{existing_gitignore}" if existing_gitignore else ""
     user = f"""Project files:
-```
 {files_str}
-```
 {existing}
 Generate the .gitignore file."""
     return GITIGNORE_SYSTEM, user
+
+
+def gitignore_rules_prompt(file_list: list[str], existing: str, selected: list[str]) -> tuple[str, str]:
+    """Generate only NEW rules to add based on selected untracked files."""
+    files_str = "\n".join(selected[:100])
+    user = f"""Untracked files to ignore:
+{files_str}
+
+Existing .gitignore:
+{existing[:1500]}
+
+Output only the new rules to add."""
+    return GITIGNORE_RULES_SYSTEM, user
 
 
 # ---------------------------------------------------------------------------
