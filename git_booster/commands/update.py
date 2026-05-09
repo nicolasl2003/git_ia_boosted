@@ -4,6 +4,7 @@
 
 import sys
 import subprocess
+import shutil
 from pathlib import Path
 
 from rich.console import Console
@@ -12,6 +13,7 @@ from rich.panel import Panel
 console = Console()
 
 GAI_DIR = Path(__file__).resolve().parents[2]
+VENV_DIR = GAI_DIR / ".venv"
 
 def _run(cmd: list[str], cwd: str) -> tuple[int, str, str]:
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
@@ -44,6 +46,35 @@ def _list_remote_branches(cwd: str, remote: str) -> list[str]:
         if line.startswith(f"{remote}/") and "HEAD" not in line:
             branches.append(line.replace(f"{remote}/", ""))
     return branches
+
+def _rebuild_venv(project_dir: str) -> bool:
+    """Delete .venv, recreate it, reinstall dependencies."""
+    console.print("[bold cyan]Rebuilding virtual environment...[/bold cyan]")
+
+    # 1. Delete old venv
+    if VENV_DIR.exists():
+        console.print(f"[dim]Removing {VENV_DIR}...[/dim]")
+        shutil.rmtree(VENV_DIR)
+
+    # 2. Create new venv with the system python3
+    python = shutil.which("python3") or shutil.which("python") or sys.executable
+    code, out, err = _run([python, "-m", "venv", str(VENV_DIR)], project_dir)
+    if code != 0:
+        console.print(f"[red]venv creation failed:[/red]\n{err or out}")
+        return False
+
+    # 3. Upgrade pip inside the new venv
+    venv_pip = str(VENV_DIR / "bin" / "pip")
+    _run([venv_pip, "install", "--upgrade", "pip", "--quiet"], project_dir)
+
+    # 4. Install project in editable mode
+    code, out, err = _run([venv_pip, "install", "-e", ".", "--quiet"], project_dir)
+    if code != 0:
+        console.print(f"[red]pip install failed:[/red]\n{err or out}")
+        return False
+
+    console.print(f"[green]Virtual environment rebuilt at {VENV_DIR}[/green]")
+    return True
 
 def run(path: str | None = None) -> None:
     project_dir = str(GAI_DIR)
@@ -85,25 +116,26 @@ def run(path: str | None = None) -> None:
                     console.print(f"  [dim]•[/dim] {b}")
         return
 
-    if "Already up to date" in out or "Déjà à jour" in out:
+    already_up_to_date = "Already up to date" in out or "Déjà à jour" in out
+
+    if already_up_to_date and VENV_DIR.exists():
         console.print("[green]Already up to date — nothing to do.[/green]")
         return
 
-    console.print(f"[green]Pull succeeded.[/green]\n{out}")
+    if not already_up_to_date:
+        console.print(f"[green]Pull succeeded.[/green]\n{out}")
+        _, log, _ = _run(
+            ["git", "log", "--oneline", "-10", "ORIG_HEAD..HEAD"],
+            project_dir,
+        )
+        if log:
+            console.print(Panel(log, title="What's new", border_style="cyan"))
 
-    _, log, _ = _run(
-        ["git", "log", "--oneline", "-10", "ORIG_HEAD..HEAD"],
-        project_dir,
-    )
-    if log:
-        console.print(Panel(log, title="What's new", border_style="cyan"))
-
-    console.print("[bold cyan]Reinstalling...[/bold cyan]")
-    pip_cmd = [sys.executable, "-m", "pip"]
-    code, out, err = _run(pip_cmd + ["install", "-e", ".", "--quiet"], project_dir)
-
-    if code != 0:
-        console.print(f"[red]pip install failed:[/red]\n{err or out}")
+    # Rebuild venv (always if pulled, or if venv missing)
+    ok = _rebuild_venv(project_dir)
+    if not ok:
         return
 
-    console.print("[green]gai updated successfully.[/green]")
+    console.print("\n[bold green]✓ gai updated successfully.[/bold green]")
+    console.print(f"[dim]Restart your shell or run: source {VENV_DIR}/bin/activate[/dim]")
+
