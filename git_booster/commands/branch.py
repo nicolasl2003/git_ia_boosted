@@ -14,38 +14,45 @@ from rich.prompt import Prompt, Confirm
 
 console = Console()
 
-# ─── git helpers ──────────────────────────────────────────────────────────────
+BRANCH_TYPES = ["feat", "fix", "hotfix", "refactor", "chore", "docs", "test", "release"]
+
 
 def _run(cmd: list[str], cwd: str | None = None) -> tuple[int, str, str]:
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     return result.returncode, result.stdout.strip(), result.stderr.strip()
 
+
 def _project_dir() -> str:
     code, out, _ = _run(["git", "rev-parse", "--show-toplevel"])
     return out if code == 0 else "."
+
 
 def _current_branch(cwd: str) -> str:
     _, out, _ = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd)
     return out or "main"
 
+
 def _has_remote(cwd: str) -> bool:
     _, out, _ = _run(["git", "remote"], cwd)
     return bool(out.strip())
+
 
 def _has_uncommitted(cwd: str) -> bool:
     _, out, _ = _run(["git", "status", "--porcelain"], cwd)
     return bool(out.strip())
 
+
 def _stash(cwd: str) -> bool:
     code, _, _ = _run(["git", "stash", "push", "-m", "gai-branch-auto-stash"], cwd)
     return code == 0
+
 
 def _stash_pop(cwd: str) -> bool:
     code, _, _ = _run(["git", "stash", "pop"], cwd)
     return code == 0
 
+
 def _all_branches(cwd: str) -> list[dict]:
-    """Return list of {name, remote, date, author, current}"""
     _, out, _ = _run([
         "git", "branch", "-a", "--format",
         "%(refname:short)|%(committerdate:short)|%(authorname)|%(HEAD)"
@@ -73,6 +80,7 @@ def _all_branches(cwd: str) -> list[dict]:
         })
     return branches
 
+
 def _merged_branches(cwd: str) -> list[str]:
     _, out, _ = _run(["git", "branch", "--merged"], cwd)
     result = []
@@ -82,9 +90,6 @@ def _merged_branches(cwd: str) -> list[str]:
             result.append(name)
     return result
 
-# ─── AI name generation ───────────────────────────────────────────────────────
-
-BRANCH_TYPES = ["feat", "fix", "hotfix", "refactor", "chore", "docs", "test", "release"]
 
 def _slugify(text: str) -> str:
     text = text.lower()
@@ -98,10 +103,15 @@ def _slugify(text: str) -> str:
     text = re.sub(r"-+", "-", text)
     return text.strip("-")[:50]
 
+
 def _ai_branch_name(description: str, branch_type: str, ticket: str | None) -> str:
     try:
-        from git_booster.ai.client import query_ai
-        prompt = (
+        from git_booster.ai.client import ask
+        system = (
+            "You are a git branch naming assistant. "
+            "Return ONLY the branch name, nothing else. No explanation, no backticks."
+        )
+        user = (
             f"Generate a git branch name for: '{description}'\n"
             f"Type prefix: {branch_type}\n"
             f"Rules:\n"
@@ -109,15 +119,14 @@ def _ai_branch_name(description: str, branch_type: str, ticket: str | None) -> s
             f"- max 5 words after prefix\n"
             f"- no special characters\n"
             f"- format: {branch_type}/<short-name>\n"
-            f"Return ONLY the branch name, nothing else."
         )
-        name = query_ai(prompt).strip().strip("`").split("\n")[0]
-        # clean any leftover characters
+        name = ask(system=system, user=user).strip().strip("`").split("\n")[0]
         name = re.sub(r"[^a-z0-9/_-]", "", name.lower())
         if not name.startswith(branch_type + "/"):
             slug = _slugify(description)
             name = f"{branch_type}/{slug}"
-    except Exception:
+    except Exception as e:
+        console.print(f"[yellow]⚠ AI unavailable ({e}), using slug.[/yellow]")
         slug = _slugify(description)
         name = f"{branch_type}/{slug}"
 
@@ -130,168 +139,84 @@ def _ai_branch_name(description: str, branch_type: str, ticket: str | None) -> s
 
     return name
 
-# ─── sub-commands ─────────────────────────────────────────────────────────────
 
 def _cmd_create(cwd: str) -> None:
-    """Create a new branch with AI-generated name."""
     console.print(Panel("[bold cyan]Create a new branch[/bold cyan]", expand=False))
 
-    # ── base branch ──
-    current = _current_branch(cwd)
-    all_local = [b["name"] for b in _all_branches(cwd) if not b["remote"]]
+    branch_type = Prompt.ask(
+        "Branch type",
+        choices=BRANCH_TYPES,
+        default="feat",
+    )
 
-    console.print(f"[dim]Current branch:[/dim] [yellow]{current}[/yellow]")
-    change_base = Confirm.ask("Start from a different branch?", default=False)
-    base = current
-    if change_base and all_local:
-        console.print("[dim]Available branches:[/dim]")
-        for i, b in enumerate(all_local, 1):
-            console.print(f"  [dim]{i}.[/dim] {b}")
-        choice = Prompt.ask("Branch number or name", default=current)
-        if choice.isdigit() and 1 <= int(choice) <= len(all_local):
-            base = all_local[int(choice) - 1]
-        elif choice in all_local:
-            base = choice
+    ticket = Prompt.ask("Ticket / issue number [optional]", default="")
+    ticket = ticket.strip() or None
 
-    # ── stash if needed ──
+    description = Prompt.ask("Describe your feature/fix")
+
+    console.print("[dim]A.I is generating branch name...[/dim]")
+    branch_name = _ai_branch_name(description, branch_type, ticket)
+
+    console.print(f"\n[bold]Suggested branch name:[/bold] [green]{branch_name}[/green]")
+    confirmed = Prompt.ask("Use this name?", choices=["yes", "edit", "abort"], default="yes")
+
+    if confirmed == "abort":
+        console.print("[yellow]Aborted.[/yellow]")
+        return
+    if confirmed == "edit":
+        branch_name = Prompt.ask("Enter branch name", default=branch_name)
+
     stashed = False
     if _has_uncommitted(cwd):
         console.print("[yellow]⚠ Uncommitted changes detected.[/yellow]")
-        if Confirm.ask("Stash changes before switching?", default=True):
+        if Confirm.ask("Stash changes before creating branch?", default=True):
             if _stash(cwd):
                 console.print("[green]✓ Changes stashed.[/green]")
                 stashed = True
-            else:
-                console.print("[red]Stash failed. Aborting.[/red]")
-                return
 
-    # ── checkout base ──
-    if base != current:
-        code, _, err = _run(["git", "checkout", base], cwd)
-        if code != 0:
-            console.print(f"[red]Cannot switch to {base}: {err}[/red]")
-            if stashed:
-                _stash_pop(cwd)
-            return
-
-    # ── type ──
-    console.print()
-    console.print("[dim]Branch types:[/dim]")
-    for i, t in enumerate(BRANCH_TYPES, 1):
-        console.print(f"  [cyan]{i}.[/cyan] {t}")
-    type_choice = Prompt.ask("Choose type", default="1")
-    if type_choice.isdigit() and 1 <= int(type_choice) <= len(BRANCH_TYPES):
-        branch_type = BRANCH_TYPES[int(type_choice) - 1]
-    elif type_choice in BRANCH_TYPES:
-        branch_type = type_choice
-    else:
-        branch_type = "feat"
-
-    # ── ticket ──
-    ticket = Prompt.ask("Ticket number (optional, press Enter to skip)", default="")
-    ticket = ticket.strip() if ticket.strip() else None
-
-    # ── description ──
-    description = Prompt.ask("Describe your feature/fix")
-    if not description.strip():
-        console.print("[red]Description required.[/red]")
-        if stashed:
-            _stash_pop(cwd)
-        return
-
-    # ── generate name ──
-    console.print()
-    console.print("[dim]Generating branch name...[/dim]")
-    branch_name = _ai_branch_name(description.strip(), branch_type, ticket)
-
-    console.print(f"\n[bold green]Generated:[/bold green] [cyan]{branch_name}[/cyan]")
-    edit = Confirm.ask("Use this name?", default=True)
-    if not edit:
-        branch_name = Prompt.ask("Enter branch name")
-        branch_name = _slugify(branch_name)
-
-    # ── check duplicates ──
-    existing = [b["name"] for b in _all_branches(cwd)]
-    if branch_name in existing:
-        console.print(f"[yellow]Branch '{branch_name}' already exists.[/yellow]")
-        if Confirm.ask("Switch to it instead?", default=True):
-            _run(["git", "checkout", branch_name], cwd)
-            if stashed:
-                if _stash_pop(cwd):
-                    console.print("[green]✓ Stash restored.[/green]")
-            return
-        else:
-            if stashed:
-                _stash_pop(cwd)
-            return
-
-    # ── create ──
     code, _, err = _run(["git", "checkout", "-b", branch_name], cwd)
-    if code != 0:
+    if code == 0:
+        console.print(f"[green]✓ Branch created and switched to: {branch_name}[/green]")
+        if _has_remote(cwd):
+            if Confirm.ask("Push branch to remote?", default=True):
+                _run(["git", "push", "--set-upstream", "origin", branch_name], cwd)
+                console.print(f"[green]✓ Pushed to origin/{branch_name}[/green]")
+    else:
         console.print(f"[red]Failed to create branch: {err}[/red]")
-        if stashed:
-            _stash_pop(cwd)
-        return
 
-    console.print(f"[green]✓ Branch '{branch_name}' created.[/green]")
-
-    # ── restore stash ──
     if stashed:
         if _stash_pop(cwd):
             console.print("[green]✓ Stash restored.[/green]")
         else:
-            console.print("[yellow]⚠ Could not restore stash. Run: git stash pop[/yellow]")
-
-    # ── push upstream ──
-    if _has_remote(cwd):
-        if Confirm.ask("Push branch to remote now?", default=True):
-            code, _, err = _run(
-                ["git", "push", "--set-upstream", "origin", branch_name], cwd
-            )
-            if code == 0:
-                console.print(f"[green]✓ Branch pushed to origin/{branch_name}.[/green]")
-            else:
-                console.print(f"[yellow]Push failed: {err}[/yellow]")
+            console.print("[yellow]⚠ Run: git stash pop[/yellow]")
 
 
 def _cmd_list(cwd: str) -> None:
-    """List all branches with metadata."""
     console.print(Panel("[bold cyan]All branches[/bold cyan]", expand=False))
-
     branches = _all_branches(cwd)
-    if not branches:
-        console.print("[yellow]No branches found.[/yellow]")
-        return
+    current = _current_branch(cwd)
 
     table = Table(show_header=True, header_style="bold cyan")
     table.add_column("", width=2)
-    table.add_column("Branch", style="white")
-    table.add_column("Last commit", style="dim")
-    table.add_column("Author", style="dim")
-    table.add_column("Remote", style="dim")
+    table.add_column("Branch")
+    table.add_column("Date")
+    table.add_column("Author")
+    table.add_column("Remote")
 
-    for b in sorted(branches, key=lambda x: x["date"], reverse=True):
-        indicator = "[green]●[/green]" if b["current"] else " "
-        remote_tag = "[blue]remote[/blue]" if b["remote"] else ""
-        name_style = f"[green]{b['name']}[/green]" if b["current"] else b["name"]
-        table.add_row(indicator, name_style, b["date"], b["author"], remote_tag)
+    for b in branches:
+        marker = "[green]●[/green]" if b["name"] == current else ""
+        remote_tag = "[dim]remote[/dim]" if b["remote"] else ""
+        table.add_row(marker, b["name"], b["date"], b["author"], remote_tag)
 
     console.print(table)
 
 
 def _cmd_switch(cwd: str) -> None:
-    """Interactively switch branch."""
     console.print(Panel("[bold cyan]Switch branch[/bold cyan]", expand=False))
-
-    branches = [b for b in _all_branches(cwd) if not b["remote"]]
+    branches = _all_branches(cwd)
     current = _current_branch(cwd)
-
-    if not branches:
-        console.print("[yellow]No local branches found.[/yellow]")
-        return
-
-    # ── stash if needed ──
     stashed = False
+
     if _has_uncommitted(cwd):
         console.print("[yellow]⚠ Uncommitted changes detected.[/yellow]")
         if Confirm.ask("Stash changes before switching?", default=True):
@@ -332,7 +257,6 @@ def _cmd_switch(cwd: str) -> None:
 
 
 def _cmd_clean(cwd: str) -> None:
-    """Delete merged branches."""
     console.print(Panel("[bold cyan]Clean merged branches[/bold cyan]", expand=False))
 
     merged = _merged_branches(cwd)
@@ -372,13 +296,10 @@ def _cmd_clean(cwd: str) -> None:
     console.print(f"\n[bold green]Done — {deleted} branch(es) cleaned.[/bold green]")
 
 
-# ─── entry point ──────────────────────────────────────────────────────────────
-
 def run_branch(args: list[str]) -> None:
     cwd = _project_dir()
 
     if not args:
-        # default: interactive menu
         console.print(Panel("[bold cyan]gai branch[/bold cyan]", expand=False))
         console.print("  [cyan]1.[/cyan] Create a new branch")
         console.print("  [cyan]2.[/cyan] List all branches")
