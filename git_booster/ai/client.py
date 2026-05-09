@@ -8,7 +8,12 @@ Config:     run `gai config` to set provider/model/keys
 """
 
 import os
+import sys
 import json
+import time
+import shutil
+import platform
+import subprocess
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -18,7 +23,6 @@ from typing import Optional
 
 _CONFIG_FILE = Path.home() / ".config" / "git-booster" / "config.env"
 MAX_TOKENS   = 4096
-
 
 def _load_config() -> dict[str, str]:
     """Load config.env then overlay env vars (env vars always win)."""
@@ -35,10 +39,8 @@ def _load_config() -> dict[str, str]:
             cfg[key] = os.environ[key]
     return cfg
 
-
 def _cfg(key: str, default: str = "") -> str:
     return _load_config().get(key, default)
-
 
 def _default_model(provider: str) -> str:
     return {
@@ -47,10 +49,78 @@ def _default_model(provider: str) -> str:
         "openai":    "gpt-4o-mini",
     }.get(provider, "llama3.2")
 
+# ── Ollama auto-start ─────────────────────────────────────────────────────────
+
+def _get_ollama_path() -> Optional[str]:
+    """Find ollama binary depending on the OS."""
+    system = platform.system()
+
+    if system == "Darwin":  # macOS
+        candidates = [
+            "/opt/homebrew/bin/ollama",   # Apple Silicon (brew)
+            "/usr/local/bin/ollama",       # Intel (brew)
+            shutil.which("ollama"),
+        ]
+    elif system == "Linux":
+        candidates = [
+            "/usr/bin/ollama",
+            "/usr/local/bin/ollama",
+            shutil.which("ollama"),
+        ]
+    else:
+        candidates = [shutil.which("ollama")]
+
+    for path in candidates:
+        if path and Path(path).exists():
+            return path
+    return None
+
+def _ollama_is_running(host: str) -> bool:
+    try:
+        urllib.request.urlopen(f"{host}", timeout=2)
+        return True
+    except Exception:
+        return False
+
+def _start_ollama_if_needed() -> None:
+    """Start Ollama in the background if it is not already running."""
+    host = _cfg("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+
+    if _ollama_is_running(host):
+        return
+
+    ollama_path = _get_ollama_path()
+
+    if not ollama_path:
+        system = platform.system()
+        hint = "brew install ollama" if system == "Darwin" else "curl -fsSL https://ollama.com/install.sh | sh"
+        raise RuntimeError(
+            f"Cannot reach Ollama at {host} and ollama binary not found.\n"
+            f"Install it with:  {hint}"
+        )
+
+    print("🚀 Starting Ollama in the background...")
+    subprocess.Popen(
+        [ollama_path, "serve"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+    # Wait up to 10s for the server to be ready
+    for _ in range(10):
+        time.sleep(1)
+        if _ollama_is_running(host):
+            print("✓ Ollama ready.")
+            return
+
+    print("⚠️  Ollama is slow to start, continuing anyway...")
 
 # ── Ollama ────────────────────────────────────────────────────────────────────
 
 def _ask_ollama(system: str, user: str, model: str, max_tokens: int) -> str:
+    _start_ollama_if_needed()
+
     host = _cfg("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
     payload = json.dumps({
         "model": model,
@@ -77,7 +147,6 @@ def _ask_ollama(system: str, user: str, model: str, max_tokens: int) -> str:
         )
     except KeyError:
         raise RuntimeError(f"Unexpected Ollama response: {data}")
-
 
 # ── Anthropic ─────────────────────────────────────────────────────────────────
 
@@ -107,7 +176,6 @@ def _ask_anthropic(system: str, user: str, model: str, max_tokens: int) -> str:
         raise RuntimeError(f"Anthropic error {e.code}: {body}")
     except KeyError:
         raise RuntimeError(f"Unexpected Anthropic response: {data}")
-
 
 # ── OpenAI-compatible (OpenAI / OpenRouter / …) ───────────────────────────────
 
@@ -140,7 +208,6 @@ def _ask_openai(system: str, user: str, model: str, max_tokens: int) -> str:
     except KeyError:
         raise RuntimeError(f"Unexpected OpenAI response: {data}")
 
-
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def ask(
@@ -166,10 +233,8 @@ def ask(
             "Run: gai config"
         )
 
-
 def current_provider() -> str:
     return _cfg("GAI_PROVIDER", "ollama")
-
 
 def current_model() -> str:
     return _cfg("GAI_MODEL") or _default_model(current_provider())
