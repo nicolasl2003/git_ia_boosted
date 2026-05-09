@@ -257,6 +257,17 @@ def update():
     """Pull latest changes and reinstall git-booster."""
     update_cmd.run()
 
+# ---------------------------------------------------------------------------
+# gai branch
+# ---------------------------------------------------------------------------
+
+from git_booster.commands.branch import run_branch
+
+@main.command("branch")
+@click.argument("args", nargs=-1)
+def branch_cmd(args):
+    """Smart branch management."""
+    run_branch(list(args))
 
 
 if __name__ == "__main__":
