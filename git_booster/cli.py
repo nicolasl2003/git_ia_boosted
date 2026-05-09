@@ -245,6 +245,18 @@ def cmd_skill_run(name, args, path):
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
+    
+# ---------------------------------------------------------------------------
+# gai update
+# ---------------------------------------------------------------------------
+
+from git_booster.commands import update as update_cmd
+
+@main.command()
+def update():
+    """Pull latest changes and reinstall git-booster."""
+    update_cmd.run()
+
 
 
 if __name__ == "__main__":
