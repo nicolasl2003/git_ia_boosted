@@ -31,11 +31,30 @@ def _get_remote(cwd: str) -> str | None:
     return "origin" if "origin" in remotes else remotes[0]
 
 
+def _get_remote_url(cwd: str, remote: str) -> str:
+    _, out, _ = _run(["git", "remote", "get-url", remote], cwd)
+    return out
+
+
+def _check_connectivity(cwd: str, remote: str) -> tuple[bool, str]:
+    code, _, err = _run(["git", "ls-remote", "--exit-code", remote], cwd)
+    return code == 0, err
+
+
+def _list_remote_branches(cwd: str, remote: str) -> list[str]:
+    _, out, _ = _run(["git", "branch", "-r"], cwd)
+    branches = []
+    for line in out.splitlines():
+        line = line.strip()
+        if line.startswith(f"{remote}/") and "HEAD" not in line:
+            branches.append(line.replace(f"{remote}/", ""))
+    return branches
+
+
 def run(path: str | None = None) -> None:
     project_dir = str(GAI_DIR)
     console.print(f"[dim]Project directory: {project_dir}[/dim]\n")
 
-    # ── Detect branch and remote ───────────────────────────────────────────────
     branch = _get_current_branch(project_dir)
     remote = _get_remote(project_dir)
 
@@ -44,14 +63,32 @@ def run(path: str | None = None) -> None:
         console.print("[dim]Add one with: git remote add origin <url>[/dim]")
         return
 
-    console.print(f"[dim]Remote: {remote} | Branch: {branch}[/dim]\n")
+    remote_url = _get_remote_url(project_dir, remote)
+    console.print(f"[dim]Remote: {remote} ({remote_url}) | Branch: {branch}[/dim]\n")
 
-    # ── git pull ───────────────────────────────────────────────────────────────
+    console.print("[bold cyan]Checking connectivity...[/bold cyan]")
+    ok, err = _check_connectivity(project_dir, remote)
+    if not ok:
+        console.print(f"[red]Cannot reach remote:[/red] {remote_url}")
+        if "authentication" in err.lower() or "permission" in err.lower():
+            console.print("[yellow]Authentication issue detected.[/yellow]")
+            console.print("[dim]SSH key:  ssh-add ~/.ssh/id_rsa[/dim]")
+            console.print("[dim]HTTPS:    use a personal access token as password[/dim]")
+        else:
+            console.print(f"[dim]{err}[/dim]")
+        return
+
     console.print("[bold cyan]Checking for updates...[/bold cyan]")
     code, out, err = _run(["git", "pull", remote, branch], project_dir)
 
     if code != 0:
         console.print(f"[red]git pull failed:[/red]\n{err or out}")
+        if "couldn't find remote ref" in err.lower():
+            branches = _list_remote_branches(project_dir, remote)
+            if branches:
+                console.print("[yellow]Available branches on remote:[/yellow]")
+                for b in branches:
+                    console.print(f"  [dim]•[/dim] {b}")
         return
 
     if "Already up to date" in out:
@@ -60,7 +97,6 @@ def run(path: str | None = None) -> None:
 
     console.print(f"[green]Pull succeeded.[/green]\n{out}")
 
-    # ── What changed ───────────────────────────────────────────────────────────
     _, log, _ = _run(
         ["git", "log", "--oneline", "-10", "ORIG_HEAD..HEAD"],
         project_dir,
@@ -68,7 +104,6 @@ def run(path: str | None = None) -> None:
     if log:
         console.print(Panel(log, title="What's new", border_style="cyan"))
 
-    # ── Reinstall ──────────────────────────────────────────────────────────────
     console.print("[bold cyan]Reinstalling...[/bold cyan]")
     code, out, err = _run(["pip", "install", "-e", ".", "--quiet"], project_dir)
 
