@@ -16,41 +16,33 @@ console = Console()
 
 BRANCH_TYPES = ["feat", "fix", "hotfix", "refactor", "chore", "docs", "test", "release"]
 
-
 def _run(cmd: list[str], cwd: str | None = None) -> tuple[int, str, str]:
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     return result.returncode, result.stdout.strip(), result.stderr.strip()
-
 
 def _project_dir() -> str:
     code, out, _ = _run(["git", "rev-parse", "--show-toplevel"])
     return out if code == 0 else "."
 
-
 def _current_branch(cwd: str) -> str:
     _, out, _ = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd)
     return out or "main"
-
 
 def _has_remote(cwd: str) -> bool:
     _, out, _ = _run(["git", "remote"], cwd)
     return bool(out.strip())
 
-
 def _has_uncommitted(cwd: str) -> bool:
     _, out, _ = _run(["git", "status", "--porcelain"], cwd)
     return bool(out.strip())
-
 
 def _stash(cwd: str) -> bool:
     code, _, _ = _run(["git", "stash", "push", "-m", "gai-branch-auto-stash"], cwd)
     return code == 0
 
-
 def _stash_pop(cwd: str) -> bool:
     code, _, _ = _run(["git", "stash", "pop"], cwd)
     return code == 0
-
 
 def _all_branches(cwd: str) -> list[dict]:
     _, out, _ = _run([
@@ -80,7 +72,6 @@ def _all_branches(cwd: str) -> list[dict]:
         })
     return branches
 
-
 def _merged_branches(cwd: str) -> list[str]:
     _, out, _ = _run(["git", "branch", "--merged"], cwd)
     result = []
@@ -89,7 +80,6 @@ def _merged_branches(cwd: str) -> list[str]:
         if name and name not in ("main", "master", "dev", "develop"):
             result.append(name)
     return result
-
 
 def _slugify(text: str) -> str:
     text = text.lower()
@@ -102,7 +92,6 @@ def _slugify(text: str) -> str:
     text = re.sub(r"[\s_]+", "-", text)
     text = re.sub(r"-+", "-", text)
     return text.strip("-")[:50]
-
 
 def _ai_branch_name(description: str, branch_type: str, ticket: str | None) -> str:
     try:
@@ -139,6 +128,25 @@ def _ai_branch_name(description: str, branch_type: str, ticket: str | None) -> s
 
     return name
 
+def _check_branch_conflict(branch_name: str, cwd: str) -> str | None:
+    """
+    Returns a safe branch name, resolving conflicts where a prefix
+    matches an existing branch (e.g. 'fix' exists, can't create 'fix/foo').
+    """
+    _, out, _ = _run(["git", "branch"], cwd)
+    existing = [l.strip().lstrip("* ") for l in out.splitlines() if l.strip()]
+
+    prefix = branch_name.split("/")[0] if "/" in branch_name else None
+    if prefix and prefix in existing:
+        console.print(
+            f"[yellow]⚠ A branch named '[bold]{prefix}[/bold]' already exists.[/yellow]\n"
+            f"[dim]Git cannot create '{branch_name}' because '{prefix}' is already a branch ref.[/dim]"
+        )
+        suffix = branch_name.split("/", 1)[-1]
+        fallback = f"{prefix}-{suffix}"
+        branch_name = Prompt.ask("Enter a different branch name", default=fallback)
+
+    return branch_name
 
 def _cmd_create(cwd: str) -> None:
     console.print(Panel("[bold cyan]Create a new branch[/bold cyan]", expand=False))
@@ -157,6 +165,9 @@ def _cmd_create(cwd: str) -> None:
     console.print("[dim]A.I is generating branch name...[/dim]")
     branch_name = _ai_branch_name(description, branch_type, ticket)
 
+    # Fix: detect prefix conflict before proposing the name
+    branch_name = _check_branch_conflict(branch_name, cwd)
+
     console.print(f"\n[bold]Suggested branch name:[/bold] [green]{branch_name}[/green]")
     confirmed = Prompt.ask("Use this name?", choices=["yes", "edit", "abort"], default="yes")
 
@@ -165,6 +176,8 @@ def _cmd_create(cwd: str) -> None:
         return
     if confirmed == "edit":
         branch_name = Prompt.ask("Enter branch name", default=branch_name)
+        # Re-check after manual edit
+        branch_name = _check_branch_conflict(branch_name, cwd)
 
     stashed = False
     if _has_uncommitted(cwd):
@@ -190,7 +203,6 @@ def _cmd_create(cwd: str) -> None:
         else:
             console.print("[yellow]⚠ Run: git stash pop[/yellow]")
 
-
 def _cmd_list(cwd: str) -> None:
     console.print(Panel("[bold cyan]All branches[/bold cyan]", expand=False))
     branches = _all_branches(cwd)
@@ -209,7 +221,6 @@ def _cmd_list(cwd: str) -> None:
         table.add_row(marker, b["name"], b["date"], b["author"], remote_tag)
 
     console.print(table)
-
 
 def _cmd_switch(cwd: str) -> None:
     console.print(Panel("[bold cyan]Switch branch[/bold cyan]", expand=False))
@@ -255,7 +266,6 @@ def _cmd_switch(cwd: str) -> None:
         else:
             console.print("[yellow]⚠ Run: git stash pop[/yellow]")
 
-
 def _cmd_clean(cwd: str) -> None:
     console.print(Panel("[bold cyan]Clean merged branches[/bold cyan]", expand=False))
 
@@ -294,7 +304,6 @@ def _cmd_clean(cwd: str) -> None:
                 console.print(f"[yellow]  Remote delete failed for {branch}[/yellow]")
 
     console.print(f"\n[bold green]Done — {deleted} branch(es) cleaned.[/bold green]")
-
 
 def run_branch(args: list[str]) -> None:
     cwd = _project_dir()
