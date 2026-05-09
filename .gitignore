@@ -2,6 +2,7 @@ To generate a `.gitignore` file for your Python project, you can follow these st
 
 1. **Create an Empty File**: Open a text editor and create a new file named `.gitignore`.
 
+
 2. **Add Common Files/Folders to Ignore**:
    - **Python Build Artifacts**: This includes compiled bytecode files.
      ```plaintext
@@ -43,4 +44,14 @@ To generate a `.gitignore` file for your Python project, you can follow these st
    - Add the `.gitignore` file to your Git repository using `git add .gitignore`.
    - Commit the changes with a descriptive message, such as "Add .gitignore file".
 
+   *.egg-info/
+__editable__*
+*.dist-info/
+.eggs/
+dist/
+build/
+
+
 This will help prevent unnecessary files from being tracked by Git in your project. Adjust the list of ignored items based on your specific project requirements.
+# Python build artifacts (auto-added)
+*.py[cod]

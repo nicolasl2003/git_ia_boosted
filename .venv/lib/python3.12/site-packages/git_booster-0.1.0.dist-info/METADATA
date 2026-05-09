@@ -5,3 +5,4 @@ Summary: AI-powered Git wrapper using Ollama (local LLM) — no API key required
 Requires-Python: >=3.10
 Requires-Dist: click>=8.1.0
 Requires-Dist: rich>=13.0.0
+Requires-Dist: pyyaml

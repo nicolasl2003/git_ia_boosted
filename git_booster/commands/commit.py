@@ -5,7 +5,7 @@ asks the user to validate/modify, then commits and optionally pushes.
 
 import os
 import tempfile
-import subprocess  # used only for $EDITOR
+import subprocess
 
 from rich.console import Console
 from rich.panel import Panel
@@ -13,12 +13,11 @@ from rich.prompt import Confirm, Prompt
 
 from git_booster.core import git
 from git_booster.ai import client as ai, prompts
+from git_booster.skills import run_trigger
 
 console = Console()
 
-
 def _edit_in_editor(message: str) -> str:
-    """Open the message in $EDITOR and return the edited content."""
     editor = os.environ.get("EDITOR", "nano")
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".txt", delete=False, encoding="utf-8"
@@ -31,12 +30,9 @@ def _edit_in_editor(message: str) -> str:
     os.unlink(tmpfile)
     return result
 
-
 def _get_remotes(cwd: str) -> list[str]:
-    """Return list of configured git remotes."""
     result = git._run(["git", "remote"], cwd=cwd, check=False)
     return [r for r in result.stdout.splitlines() if r.strip()]
-
 
 def run(path: str | None = None, no_confirm: bool = False) -> None:
     cwd = path or os.getcwd()
@@ -64,12 +60,15 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
 
     raw_status = git.status(cwd)
 
-    # ---- 2. Generate message -------------------------------------------------
+    # ---- 2. pre-commit trigger -----------------------------------------------
+    run_trigger("pre-commit", cwd=cwd)
+
+    # ---- 3. Generate message (pre-ai context injected automatically) ---------
     with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
         system, user = prompts.commit_prompt(diff, raw_status)
-        message = ai.ask(system, user, max_tokens=256)
+        message = ai.ask(system, user, max_tokens=256, cwd=cwd)
 
-    # ---- 3. Validate / modify loop ------------------------------------------
+    # ---- 4. Validate / modify loop ------------------------------------------
     while True:
         console.print(Panel(message, title="Generated commit message", border_style="green"))
 
@@ -95,7 +94,7 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
             style_hint = Prompt.ask("[cyan]How should this commit be described?[/cyan]")
             with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
                 regen_system, regen_user = prompts.commit_prompt(diff, raw_status, style_hint=style_hint)
-                message = ai.ask(regen_system, regen_user, max_tokens=128)
+                message = ai.ask(regen_system, regen_user, max_tokens=128, cwd=cwd)
             continue
 
         elif choice == "edit":
@@ -114,11 +113,14 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
             final_message = message
             break
 
-    # ---- 4. Commit -----------------------------------------------------------
+    # ---- 5. Commit -----------------------------------------------------------
     output = git.commit(final_message, cwd)
     console.print(f"[green]{output}[/green]")
 
-    # ---- 5. Push (optional, with auto error-fix) -----------------------------
+    # ---- 6. post-commit trigger ----------------------------------------------
+    run_trigger("post-commit", cwd=cwd)
+
+    # ---- 7. Push (optional, with auto error-fix) ----------------------------
     remotes = _get_remotes(cwd)
     if not remotes:
         return

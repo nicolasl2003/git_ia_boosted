@@ -183,8 +183,9 @@ def cmd_skills(subcommand, trigger):
         console.print(f"[red]Unknown subcommand:[/red] {subcommand}  (available: list)")
         raise SystemExit(1)
 
-    from git_booster.skills import list_skills
-    skills = list_skills(trigger=trigger)
+    from git_booster.skills import all_skills
+    skills = all_skills(trigger=trigger)
+
     if not skills:
         msg = f"No skills with trigger '{trigger}'." if trigger else "No skills installed."
         console.print(f"[yellow]{msg}[/yellow]")
@@ -199,13 +200,14 @@ def cmd_skills(subcommand, trigger):
     t.add_column("Trigger", style="dim")
     t.add_column("Source",  style="dim")
     t.add_column("Description")
-    for name, skill in sorted(skills.items()):
+    for skill in sorted(skills, key=lambda s: s["name"]):
         t.add_row(
-            name,
-            skill.trigger,
-            skill.source,
-            skill.description or "—",
+            skill["name"],
+            skill.get("trigger", "manual"),
+            skill.get("_type", "—"),
+            skill.get("description") or "—",
         )
+
     console.print(t)
     console.print(
         f"\n[dim]User skills dir: ~/.config/git-booster/skills/   "

@@ -25,6 +25,34 @@ from git_booster.ai import client as ai, prompts
 
 console = Console()
 
+ALWAYS_IGNORE = """\
+# Python build artifacts (always ignore)
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.dist-info/
+__editable__*
+.eggs/
+dist/
+build/
+.venv/
+venv/
+"""
+
+
+def _ensure_base_patterns(gitignore_path: Path, cwd: str) -> None:
+    """Append any missing ALWAYS_IGNORE patterns to an existing .gitignore."""
+    existing = gitignore_path.read_text(encoding="utf-8")
+    missing_lines = [
+        line for line in ALWAYS_IGNORE.splitlines()
+        if line and not line.startswith("#") and line not in existing
+    ]
+    if missing_lines:
+        with open(gitignore_path, "a", encoding="utf-8") as f:
+            f.write("\n# Python build artifacts (auto-added)\n")
+            f.write("\n".join(missing_lines) + "\n")
+        git.add([".gitignore"], cwd)
+
 
 def _select_files_to_ignore(untracked: list[str]) -> list[str]:
     """Interactive multi-select: pick which untracked files to add to .gitignore."""
@@ -70,16 +98,20 @@ def _handle_gitignore(cwd: str, repo_root: str) -> None:
         with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
             system, user = prompts.gitignore_prompt(all_files)
             generated = ai.ask(system, user)
-        console.print(Panel(generated, title=".gitignore (generated)", border_style="yellow"))
+        final_content = ALWAYS_IGNORE + "\n" + generated.strip() + "\n"
+        console.print(Panel(final_content, title=".gitignore (generated)", border_style="yellow"))
         if Confirm.ask("Create .gitignore with this content?", default=True):
-            gitignore_path.write_text(generated, encoding="utf-8")
+            gitignore_path.write_text(final_content, encoding="utf-8")
             git.add([".gitignore"], cwd)
             console.print("[green].gitignore created and staged.[/green]")
         else:
             console.print("[yellow].gitignore not created.[/yellow]")
         return
 
-    # ── .gitignore exists → selective append ──────────────────────────────────
+    # ── .gitignore exists → ensure base patterns first ────────────────────────
+    _ensure_base_patterns(gitignore_path, cwd)
+
+    # ── selective append ───────────────────────────────────────────────────────
     untracked = git.list_untracked_files(cwd)
     if not untracked:
         console.print("[dim].gitignore up to date — no untracked files.[/dim]")
@@ -125,7 +157,6 @@ def run(files: list[str] | None = None, path: str | None = None) -> None:
 
     # ── Stage files ────────────────────────────────────────────────────────────
     if files:
-        # Specific files mode — resolve each path relative to cwd
         valid, missing = [], []
         for f in files:
             p = Path(f) if Path(f).is_absolute() else Path(cwd) / f
@@ -141,7 +172,6 @@ def run(files: list[str] | None = None, path: str | None = None) -> None:
         git.add(valid, cwd)
         console.print(f"[green]Staged: {', '.join(valid)}[/green]")
     else:
-        # All files mode
         console.print("[bold cyan]Staging all changes...[/bold cyan]")
         git.add_all(cwd)
         console.print("[green]All changes staged.[/green]")

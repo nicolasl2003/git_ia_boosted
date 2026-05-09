@@ -1,0 +1,6 @@
+# ~/.config/git-booster/skills/readme_context.yaml
+
+name:        readme_context
+description: "Inject README summary into AI prompt"
+trigger:     pre-ai
+context_cmd: "head -20 README.md 2>/dev/null || echo ''"

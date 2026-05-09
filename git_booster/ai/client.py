@@ -55,10 +55,10 @@ def _get_ollama_path() -> Optional[str]:
     """Find ollama binary depending on the OS."""
     system = platform.system()
 
-    if system == "Darwin":  # macOS
+    if system == "Darwin":
         candidates = [
-            "/opt/homebrew/bin/ollama",   # Apple Silicon (brew)
-            "/usr/local/bin/ollama",       # Intel (brew)
+            "/opt/homebrew/bin/ollama",
+            "/usr/local/bin/ollama",
             shutil.which("ollama"),
         ]
     elif system == "Linux":
@@ -93,7 +93,11 @@ def _start_ollama_if_needed() -> None:
 
     if not ollama_path:
         system = platform.system()
-        hint = "brew install ollama" if system == "Darwin" else "curl -fsSL https://ollama.com/install.sh | sh"
+        hint = (
+            "brew install ollama"
+            if system == "Darwin"
+            else "curl -fsSL https://ollama.com/install.sh | sh"
+        )
         raise RuntimeError(
             f"Cannot reach Ollama at {host} and ollama binary not found.\n"
             f"Install it with:  {hint}"
@@ -107,7 +111,6 @@ def _start_ollama_if_needed() -> None:
         start_new_session=True,
     )
 
-    # Wait up to 10s for the server to be ready
     for _ in range(10):
         time.sleep(1)
         if _ollama_is_running(host):
@@ -115,6 +118,43 @@ def _start_ollama_if_needed() -> None:
             return
 
     print("⚠️  Ollama is slow to start, continuing anyway...")
+
+# ── pre-ai context injection ──────────────────────────────────────────────────
+
+def _collect_pre_ai_context(cwd: Optional[str] = None) -> str:
+    """
+    Run all skills with trigger=pre-ai and collect their context output.
+    Returns a string to append to the system prompt (empty if none).
+    """
+    try:
+        from git_booster.skills import get_skills
+    except ImportError:
+        return ""
+
+    parts = []
+    for skill in get_skills():
+        if skill.get("trigger") != "pre-ai":
+            continue
+        try:
+            if skill["_type"] == "python" and callable(skill.get("context")):
+                result = skill["context"](path=cwd)
+                if result and result.strip():
+                    parts.append(result.strip())
+            elif skill["_type"] == "yaml" and skill.get("context_cmd"):
+                import subprocess as sp
+                result = sp.check_output(
+                    skill["context_cmd"],
+                    shell=True,
+                    cwd=cwd,
+                    text=True,
+                    stderr=sp.DEVNULL,
+                )
+                if result and result.strip():
+                    parts.append(result.strip())
+        except Exception as e:
+            print(f"⚠️  pre-ai skill '{skill.get('name')}' failed: {e}")
+
+    return "\n\n".join(parts)
 
 # ── Ollama ────────────────────────────────────────────────────────────────────
 
@@ -177,7 +217,7 @@ def _ask_anthropic(system: str, user: str, model: str, max_tokens: int) -> str:
     except KeyError:
         raise RuntimeError(f"Unexpected Anthropic response: {data}")
 
-# ── OpenAI-compatible (OpenAI / OpenRouter / …) ───────────────────────────────
+# ── OpenAI-compatible ─────────────────────────────────────────────────────────
 
 def _ask_openai(system: str, user: str, model: str, max_tokens: int) -> str:
     api_key  = _cfg("OPENAI_API_KEY")
@@ -215,11 +255,17 @@ def ask(
     user: str,
     model: Optional[str] = None,
     max_tokens: int = MAX_TOKENS,
+    cwd: Optional[str] = None,
 ) -> str:
     """Send a prompt to the configured AI provider and return the response."""
     cfg      = _load_config()
     provider = cfg.get("GAI_PROVIDER", "ollama").lower()
     chosen   = model or cfg.get("GAI_MODEL") or _default_model(provider)
+
+    # Inject pre-ai context from skills into the system prompt
+    extra_context = _collect_pre_ai_context(cwd=cwd)
+    if extra_context:
+        system = system + "\n\n# Project Context\n" + extra_context
 
     if provider == "ollama":
         return _ask_ollama(system, user, chosen, max_tokens)
