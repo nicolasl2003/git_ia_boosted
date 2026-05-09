@@ -14,6 +14,63 @@ git-booster is a smart Git wrapper using Ollama (or Anthropic/OpenAI) to automat
 
 ---
 
+## License
+
+This project is licensed under the **MIT License**.
+
+```
+MIT License
+
+Copyright (c) 2024 git-booster contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Open-source dependencies
+
+git-booster is built on top of open-source tools and libraries:
+
+| Dependency | License | Role |
+|---|---|---|
+| [Ollama](https://github.com/ollama/ollama) | MIT | Local AI model server |
+| [Python](https://www.python.org) | PSF License | Runtime |
+| [Click](https://github.com/pallets/click) | BSD-3-Clause | CLI framework |
+| [Rich](https://github.com/Textualize/rich) | MIT | Terminal formatting |
+| [python-dotenv](https://github.com/theskumar/python-dotenv) | BSD-3-Clause | Config file loading |
+| [anthropic](https://github.com/anthropics/anthropic-sdk-python) | MIT | Anthropic API client |
+| [openai](https://github.com/openai/openai-python) | Apache-2.0 | OpenAI API client |
+| [GitPython](https://github.com/gitpython-developers/GitPython) | BSD-3-Clause | Git repository interaction |
+
+> All dependencies are optional except Click and Rich.
+> Ollama, anthropic and openai are only required depending on your chosen provider.
+
+### Contributing
+
+Contributions are welcome! By contributing to git-booster, you agree that your contributions will be licensed under the MIT License.
+
+1. Fork the repository
+2. Create a feature branch: `gai branch create`
+3. Commit your changes: `gai commit`
+4. Push and open a Pull Request
+
+---
+
 ## Commands
 
 ### Native (no AI — instant)
@@ -407,6 +464,7 @@ git_booster/
 │       ├── rm.py                # gai rm
 │       ├── status.py            # gai status
 │       └── stop.py              # gai stop
+├── LICENSE
 ├── .env.example
 └── pyproject.toml
 ```
