@@ -2,6 +2,7 @@
 `gai update` — pull latest changes and reinstall git-booster.
 """
 
+import sys
 import subprocess
 from pathlib import Path
 
@@ -12,16 +13,13 @@ console = Console()
 
 GAI_DIR = Path(__file__).resolve().parents[2]
 
-
 def _run(cmd: list[str], cwd: str) -> tuple[int, str, str]:
     result = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     return result.returncode, result.stdout.strip(), result.stderr.strip()
 
-
 def _get_current_branch(cwd: str) -> str:
     _, out, _ = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd)
     return out or "master"
-
 
 def _get_remote(cwd: str) -> str | None:
     _, out, _ = _run(["git", "remote"], cwd)
@@ -30,16 +28,13 @@ def _get_remote(cwd: str) -> str | None:
         return None
     return "origin" if "origin" in remotes else remotes[0]
 
-
 def _get_remote_url(cwd: str, remote: str) -> str:
     _, out, _ = _run(["git", "remote", "get-url", remote], cwd)
     return out
 
-
 def _check_connectivity(cwd: str, remote: str) -> tuple[bool, str]:
     code, _, err = _run(["git", "ls-remote", "--exit-code", remote], cwd)
     return code == 0, err
-
 
 def _list_remote_branches(cwd: str, remote: str) -> list[str]:
     _, out, _ = _run(["git", "branch", "-r"], cwd)
@@ -49,7 +44,6 @@ def _list_remote_branches(cwd: str, remote: str) -> list[str]:
         if line.startswith(f"{remote}/") and "HEAD" not in line:
             branches.append(line.replace(f"{remote}/", ""))
     return branches
-
 
 def run(path: str | None = None) -> None:
     project_dir = str(GAI_DIR)
@@ -91,7 +85,7 @@ def run(path: str | None = None) -> None:
                     console.print(f"  [dim]•[/dim] {b}")
         return
 
-    if "Already up to date" in out:
+    if "Already up to date" in out or "Déjà à jour" in out:
         console.print("[green]Already up to date — nothing to do.[/green]")
         return
 
@@ -105,7 +99,8 @@ def run(path: str | None = None) -> None:
         console.print(Panel(log, title="What's new", border_style="cyan"))
 
     console.print("[bold cyan]Reinstalling...[/bold cyan]")
-    code, out, err = _run(["pip", "install", "-e", ".", "--quiet"], project_dir)
+    pip_cmd = [sys.executable, "-m", "pip"]
+    code, out, err = _run(pip_cmd + ["install", "-e", ".", "--quiet"], project_dir)
 
     if code != 0:
         console.print(f"[red]pip install failed:[/red]\n{err or out}")
