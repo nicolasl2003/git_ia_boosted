@@ -339,3 +339,18 @@ PUSH_ERR_PERMISSION = "permission denied"
 PUSH_ERR_UNKNOWN = "unknown"
 PUSH_ERR_REFSPEC = "refspec"
 PUSH_ERR_REMOTE_NOT_FOUND = "remote not found"
+
+
+def get_remote(cwd: str | None = None) -> str | None:
+    """Return the first configured remote, or None."""
+    try:
+        result = run(["remote"], cwd=cwd)
+        remotes = [r.strip() for r in result.splitlines() if r.strip()]
+        return remotes[0] if remotes else None
+    except Exception:
+        return None
+
+
+def get_current_branch(cwd: str | None = None) -> str:
+    """Return the current branch name."""
+    return run(["rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd).strip()
