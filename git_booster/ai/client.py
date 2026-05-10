@@ -25,17 +25,22 @@ RETRY_DELAY     = 2
 # ---------------------------------------------------------------------------
 
 def ask(
-    prompt: str,
+    system_or_prompt: str,
+    user_prompt: str | None = None,
     cwd: str | None = None,
     timeout: int | None = None,
-    # legacy / compat params — accepted but ignored
     max_tokens: int | None = None,
-    system: str | None = None,
     model: str | None = None,
 ) -> str:
     """
     Send a prompt to the configured AI provider.
     Retries MAX_RETRIES times, then returns a safe fallback string.
+    
+    Usage:
+        ask("prompt")                              # single string
+        ask("system", "user")                      # system + user
+        ask("prompt", cwd=cwd)                     # with context
+        ask(system, user, max_tokens=256, cwd=cwd) # full
     """
     cfg      = _load_config()
     provider = cfg["provider"]
@@ -45,9 +50,13 @@ def ask(
     if model:
         cfg["model"] = model
 
-    # prepend system prompt if provided
-    if system:
-        prompt = f"{system}\n\n{prompt}"
+    # Build final prompt
+    if user_prompt:
+        # Two-argument form: system + user
+        prompt = f"{system_or_prompt}\n\n{user_prompt}"
+    else:
+        # Single-argument form
+        prompt = system_or_prompt
 
     # inject project context if available
     if cwd:
@@ -118,7 +127,6 @@ def _ask_ollama(prompt: str, cfg: dict, timeout: int) -> str:
             f"Ollama HTTP {e.response.status_code}: {e.response.text[:200]}"
         ) from e
 
-
 def _ask_anthropic(prompt: str, cfg: dict, timeout: int) -> str:
     try:
         import anthropic
@@ -150,7 +158,6 @@ def _ask_anthropic(prompt: str, cfg: dict, timeout: int) -> str:
 
     except anthropic.AuthenticationError as e:
         raise _ProviderUnavailableError("Anthropic: invalid API key.") from e
-
 
 def _ask_openai(prompt: str, cfg: dict, timeout: int) -> str:
     try:
@@ -281,7 +288,6 @@ def _load_config() -> dict:
     cfg.setdefault("model",    "llama3.2")
 
     return cfg
-
 
 # ---------------------------------------------------------------------------
 # custom exceptions
