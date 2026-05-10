@@ -10,21 +10,77 @@ from rich.table import Table
 console = Console()
 
 # ---------------------------------------------------------------------------
+# custom help
+# ---------------------------------------------------------------------------
+
+def _print_help():
+    from rich.panel import Panel
+
+    console.print(Panel("[bold cyan]gai — help[/bold cyan]", expand=False))
+    console.print()
+
+    t = Table(show_header=True, header_style="bold", box=None, padding=(0, 2))
+    t.add_column("Command",     style="cyan")
+    t.add_column("Aliases",     style="dim")
+    t.add_column("Description")
+
+    rows = [
+        ("gai add [files]",       "",         "Stage files + AI .gitignore update"),
+        ("gai status",            "",         "Show git status (instant, no AI)"),
+        ("gai commit",            "",         "AI commit message → validate → commit → push"),
+        ("gai resolve",           "",         "Detect & resolve conflicts, recover push errors"),
+        ("gai review",            "",         "AI code review of staged changes"),
+        ("gai branch",            "",         "Smart branch management (create/switch/clean…)"),
+        ("gai rm <file>",         "",         "Untrack file (--hard to delete from disk)"),
+        ("gai skills",            "",         "List available skills"),
+        ("gai skill <name>",      "",         "Run a skill by name"),
+        ("gai config",            "",         "Interactive setup: provider, model, keys"),
+        ("gai update",            "",         "Pull latest version and reinstall"),
+        ("gai stop",              "",         "Stop Ollama server, free memory"),
+        ("gai --version",         "-v",       "Show current version"),
+        ("gai --help",            "-h",       "Show this help"),
+    ]
+
+    for cmd, aliases, desc in rows:
+        t.add_row(cmd, aliases, desc)
+
+    console.print(t)
+    console.print()
+
+    console.print("[bold]Providers supported:[/bold]")
+    console.print("  [cyan]ollama[/cyan]     Local LLM — 100% private, no API key required")
+    console.print("  [cyan]anthropic[/cyan]  Claude via API key")
+    console.print("  [cyan]openai[/cyan]     GPT or any OpenAI-compatible endpoint")
+    console.print()
+
+    console.print("[bold]Examples:[/bold]")
+    console.print("  [dim]$[/dim] gai add")
+    console.print("  [dim]$[/dim] gai commit")
+    console.print("  [dim]$[/dim] gai resolve")
+    console.print("  [dim]$[/dim] gai branch create")
+    console.print("  [dim]$[/dim] gai skill explain main.py")
+    console.print()
+    console.print("[dim]Docs & skills: ~/.config/git-booster/skills/[/dim]")
+
+# ---------------------------------------------------------------------------
 # main group
 # ---------------------------------------------------------------------------
 
-@click.group(invoke_without_command=True)
+@click.group(invoke_without_command=True, context_settings={"help_option_names": []})
 @click.option("--version", "-v", is_eager=True, is_flag=True, default=False, help="Show version")
+@click.option("--help", "-h", "show_help", is_eager=True, is_flag=True, default=False, help="Show help")
 @click.pass_context
-def main(ctx, version):
+def main(ctx, version, show_help):
     """git-booster — AI-powered Git wrapper using Ollama (local LLM)."""
     if version:
         from git_booster.commands.version import show_version
         show_version()
         ctx.exit()
         return
-    if ctx.invoked_subcommand is None:
-        click.echo(ctx.get_help())
+    if show_help or ctx.invoked_subcommand is None:
+        _print_help()
+        ctx.exit()
+        return
 
 # ---------------------------------------------------------------------------
 # gai add
