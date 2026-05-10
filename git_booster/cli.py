@@ -9,13 +9,22 @@ from rich.table import Table
 
 console = Console()
 
+# ---------------------------------------------------------------------------
+# main group
+# ---------------------------------------------------------------------------
 
-@click.group()
-@click.version_option(package_name="git-booster")
-def main():
+@click.group(invoke_without_command=True)
+@click.option("--version", "-v", is_eager=True, is_flag=True, default=False, help="Show version")
+@click.pass_context
+def main(ctx, version):
     """git-booster — AI-powered Git wrapper using Ollama (local LLM)."""
-    pass
-
+    if version:
+        from git_booster.commands.version import show_version
+        show_version()
+        ctx.exit()
+        return
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
 
 # ---------------------------------------------------------------------------
 # gai add
@@ -39,7 +48,6 @@ def cmd_add(files, path):
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
 
-
 # ---------------------------------------------------------------------------
 # gai status  (native, no AI)
 # ---------------------------------------------------------------------------
@@ -54,7 +62,6 @@ def cmd_status(path):
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
-
 
 # ---------------------------------------------------------------------------
 # gai commit
@@ -72,7 +79,6 @@ def cmd_commit(path, yes):
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
 
-
 # ---------------------------------------------------------------------------
 # gai resolve
 # ---------------------------------------------------------------------------
@@ -87,7 +93,6 @@ def cmd_resolve(path):
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
-
 
 # ---------------------------------------------------------------------------
 # gai review
@@ -113,8 +118,6 @@ def cmd_review(path, commit):
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
 
-
-
 # ---------------------------------------------------------------------------
 # gai rm
 # ---------------------------------------------------------------------------
@@ -132,7 +135,6 @@ def cmd_rm(files, hard, path):
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
 
-
 # ---------------------------------------------------------------------------
 # gai stop
 # ---------------------------------------------------------------------------
@@ -147,7 +149,6 @@ def cmd_stop():
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
 
-
 # ---------------------------------------------------------------------------
 # gai config
 # ---------------------------------------------------------------------------
@@ -161,7 +162,6 @@ def cmd_config():
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
-
 
 # ---------------------------------------------------------------------------
 # gai skills [list]
@@ -214,7 +214,6 @@ def cmd_skills(subcommand, trigger):
         f"Formats: .py  .yaml[/dim]"
     )
 
-
 # ---------------------------------------------------------------------------
 # gai skill <name> [args...]
 # ---------------------------------------------------------------------------
@@ -245,30 +244,29 @@ def cmd_skill_run(name, args, path):
     except Exception as e:
         console.print(f"[red]Error:[/red] {e}")
         raise SystemExit(1)
-    
+
 # ---------------------------------------------------------------------------
 # gai update
 # ---------------------------------------------------------------------------
 
-from git_booster.commands import update as update_cmd
-
-@main.command()
-def update():
+@main.command("update")
+def cmd_update():
     """Pull latest changes and reinstall git-booster."""
+    from git_booster.commands import update as update_cmd
     update_cmd.run()
 
 # ---------------------------------------------------------------------------
 # gai branch
 # ---------------------------------------------------------------------------
 
-from git_booster.commands.branch import run_branch
-
 @main.command("branch")
 @click.argument("args", nargs=-1)
 def branch_cmd(args):
     """Smart branch management."""
+    from git_booster.commands.branch import run_branch
     run_branch(list(args))
 
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     main()
