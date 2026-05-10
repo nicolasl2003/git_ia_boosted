@@ -389,3 +389,20 @@ def stash_push(path: str = ".") -> tuple[bool, str]:
 def stash_pop(path: str = ".") -> tuple[bool, str]:
     r = _run(["git", "stash", "pop"], cwd=path)
     return r.returncode == 0, r.stdout + r.stderr
+
+
+def parse_push_error(err: str) -> str:
+    e = err.lower()
+    if "fetch first" in e or "remote contains work" in e:
+        return "fetch_first"
+    if "rejected" in e and "non-fast-forward" in e:
+        return "rejected"
+    if "no upstream" in e or "set-upstream" in e or "set the upstream" in e:
+        return "no_upstream"
+    if "bad ref" in e or "refspec" in e or "does not match any" in e:
+        return "refspec"
+    if "authentication" in e or "permission denied" in e or "403" in e or "401" in e:
+        return "auth"
+    if "repository not found" in e or "could not resolve host" in e or "unable to access" in e:
+        return "no_remote"
+    return "unknown"
