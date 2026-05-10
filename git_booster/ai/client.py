@@ -39,6 +39,7 @@ def _load_config() -> dict[str, str]:
             cfg[key] = os.environ[key]
     return cfg
 
+<<<<<<< Updated upstream
 def _cfg(key: str, default: str = "") -> str:
     return _load_config().get(key, default)
 
@@ -76,6 +77,92 @@ def _get_ollama_path() -> Optional[str]:
     return None
 
 def _ollama_is_running(host: str) -> bool:
+=======
+from rich.console import Console
+
+console = Console()
+
+# ---------------------------------------------------------------------------
+# defaults
+# ---------------------------------------------------------------------------
+
+DEFAULT_TIMEOUT = 60
+MAX_RETRIES     = 2
+RETRY_DELAY     = 2
+
+# ---------------------------------------------------------------------------
+# public API
+# ---------------------------------------------------------------------------
+
+def ask(
+    prompt: str,
+    cwd: str | None = None,
+    timeout: int | None = None,
+    max_tokens: int | None = None,
+    system: str | None = None,
+    model: str | None = None,
+) -> str:
+    """
+    Send a prompt to the configured AI provider.
+    Retries MAX_RETRIES times, then returns a safe fallback string.
+    """
+    cfg      = _load_config()
+    provider = cfg["provider"]
+    timeout  = timeout or int(cfg.get("timeout", DEFAULT_TIMEOUT))
+
+    if model:
+        cfg["model"] = model
+
+    if system:
+        prompt = f"{system}\n\n{prompt}"
+
+    if cwd:
+        ctx = _load_project_context(cwd)
+        if ctx:
+            prompt = f"{ctx}\n\n{prompt}"
+
+    last_error: Exception | None = None
+
+    for attempt in range(1, MAX_RETRIES + 2):
+        try:
+            if provider == "ollama":
+                return _ask_ollama(prompt, cfg, timeout)
+            elif provider == "anthropic":
+                return _ask_anthropic(prompt, cfg, timeout)
+            elif provider == "openai":
+                return _ask_openai(prompt, cfg, timeout)
+            else:
+                raise ValueError(f"Unknown provider: {provider!r}")
+
+        except _TimeoutError as e:
+            last_error = e
+            console.print(f"[yellow]⚠ AI timeout (attempt {attempt}/{MAX_RETRIES + 1})[/yellow]")
+
+        except _ProviderUnavailableError as e:
+            last_error = e
+            console.print(f"[yellow]⚠ Provider unavailable (attempt {attempt}/{MAX_RETRIES + 1}): {e}[/yellow]")
+
+        except Exception as e:
+            last_error = e
+            console.print(f"[yellow]⚠ AI error (attempt {attempt}/{MAX_RETRIES + 1}): {e}[/yellow]")
+
+        if attempt <= MAX_RETRIES:
+            time.sleep(RETRY_DELAY)
+
+    console.print("[red]✗ AI unavailable after all retries.[/red] Using fallback response.")
+    return _fallback(prompt, last_error)
+
+# ---------------------------------------------------------------------------
+# provider implementations
+# ---------------------------------------------------------------------------
+
+def _ask_ollama(prompt: str, cfg: dict, timeout: int) -> str:
+    import httpx
+
+    host  = cfg.get("ollama_host", "http://localhost:11434")
+    model = cfg.get("model", "llama3.2")
+
+>>>>>>> Stashed changes
     try:
         urllib.request.urlopen(f"{host}", timeout=2)
         return True
@@ -98,10 +185,28 @@ def _start_ollama_if_needed() -> None:
             if system == "Darwin"
             else "curl -fsSL https://ollama.com/install.sh | sh"
         )
+<<<<<<< Updated upstream
         raise RuntimeError(
             f"Cannot reach Ollama at {host} and ollama binary not found.\n"
             f"Install it with:  {hint}"
         )
+=======
+
+    api_key = cfg.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise _ProviderUnavailableError("ANTHROPIC_API_KEY not set")
+
+    model = cfg.get("model", "claude-3-haiku-20240307")
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=1024,
+        )
+        return response.content[0].text.strip()
+>>>>>>> Stashed changes
 
     print("🚀 Starting Ollama in the background...")
     subprocess.Popen(
@@ -208,6 +313,7 @@ def _ask_anthropic(system: str, user: str, model: str, max_tokens: int) -> str:
         }, method="POST",
     )
     try:
+<<<<<<< Updated upstream
         with urllib.request.urlopen(req, timeout=60) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             return data["content"][0]["text"].strip()
@@ -247,6 +353,55 @@ def _ask_openai(system: str, user: str, model: str, max_tokens: int) -> str:
         raise RuntimeError(f"OpenAI error {e.code}: {body}")
     except KeyError:
         raise RuntimeError(f"Unexpected OpenAI response: {data}")
+=======
+        import yaml
+        data = yaml.safe_load(cfg_file.read_text())
+        return data.get("ai_context", "") if isinstance(data, dict) else ""
+    except Exception:
+        return ""
+
+# ---------------------------------------------------------------------------
+# config loader  ← FIX: clés stockées en UPPER pour matcher GAI_MODEL etc.
+# ---------------------------------------------------------------------------
+
+def _load_config() -> dict:
+    import pathlib
+
+    cfg: dict = {}
+
+    env_file = pathlib.Path.home() / ".config" / "git-booster" / "config.env"
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            cfg[k.strip().upper()] = v.strip()   # ← UPPER ici (fix)
+
+    # env vars always win
+    for key in (
+        "GAI_PROVIDER", "GAI_MODEL", "OLLAMA_HOST",
+        "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL",
+        "GAI_TIMEOUT",
+    ):
+        val = os.environ.get(key)
+        if val:
+            cfg[key] = val
+
+    # normalise vers les clés courtes utilisées par les providers
+    cfg["provider"]    = cfg.get("GAI_PROVIDER", "ollama")
+    cfg["model"]       = cfg.get("GAI_MODEL",    "llama3.2")
+    cfg["ollama_host"] = cfg.get("OLLAMA_HOST",  "http://localhost:11434")
+
+    if "ANTHROPIC_API_KEY" in cfg:
+        cfg["anthropic_api_key"] = cfg["ANTHROPIC_API_KEY"]
+    if "OPENAI_API_KEY" in cfg:
+        cfg["openai_api_key"] = cfg["OPENAI_API_KEY"]
+    if "OPENAI_BASE_URL" in cfg:
+        cfg["openai_base_url"] = cfg["OPENAI_BASE_URL"]
+    if "GAI_TIMEOUT" in cfg:
+        cfg["timeout"] = cfg["GAI_TIMEOUT"]
+>>>>>>> Stashed changes
 
 # ── Public API ────────────────────────────────────────────────────────────────
 

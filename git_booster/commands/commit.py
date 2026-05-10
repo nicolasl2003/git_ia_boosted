@@ -63,10 +63,10 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
     # ---- 2. pre-commit trigger -----------------------------------------------
     run_trigger("pre-commit", cwd=cwd)
 
-    # ---- 3. Generate message (pre-ai context injected automatically) ---------
+    # ---- 3. Generate message -------------------------------------------------
     with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
         system, user = prompts.commit_prompt(diff, raw_status)
-        message = ai.ask(system, user, max_tokens=256, cwd=cwd)
+        message = ai.ask(f"{system}\n\n{user}", cwd=cwd)
 
     # ---- 4. Validate / modify loop ------------------------------------------
     while True:
@@ -94,7 +94,7 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
             style_hint = Prompt.ask("[cyan]How should this commit be described?[/cyan]")
             with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
                 regen_system, regen_user = prompts.commit_prompt(diff, raw_status, style_hint=style_hint)
-                message = ai.ask(regen_system, regen_user, max_tokens=128, cwd=cwd)
+                message = ai.ask(f"{regen_system}\n\n{regen_user}", cwd=cwd)
             continue
 
         elif choice == "edit":
