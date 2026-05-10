@@ -281,7 +281,7 @@ def _handle_fetch_first(cwd: str, remote: str, branch: str, err: str) -> bool:
     if not _pull_with_guard(cwd, remote, branch, auto=False):
         return False
     console.print("[bold cyan]→ Retrying push…[/bold cyan]")
-    ok, out = git.push(remote, branch, path=cwd)
+    ok, out = git.push(branch=branch, remote=remote, path=cwd)
     if ok:
         console.print("[bold green]✓ Push succeeded.[/bold green]")
         run_trigger("post-push", cwd=cwd)
@@ -423,7 +423,7 @@ def attempt_push(cwd: str) -> bool:
         return False
     branch = git.get_branch(cwd)
     console.print(f"[bold cyan]→ git push {remote} {branch}[/bold cyan]")
-    ok, out = git.push(remote, branch, path=cwd)
+    ok, out = git.push(branch=branch, remote=remote, path=cwd)
     if ok:
         console.print("[bold green]✓ Push succeeded.[/bold green]")
         run_trigger("post-push", cwd=cwd)
@@ -448,7 +448,6 @@ def run(path: str | None = None) -> None:
     remote    = git.get_remote(cwd)
     branch    = git.get_branch(cwd)
 
-    # ── Case 1: in-progress rebase with unresolved conflicts ─────────────────
     if git.is_rebasing(cwd) and git.has_merge_conflicts(cwd):
         console.print(Rule("[bold red]Rebase conflicts[/bold red]"))
         files    = git.get_conflict_files(cwd)
@@ -463,7 +462,6 @@ def run(path: str | None = None) -> None:
             console.print(f"[yellow]{resolved}/{len(files)} resolved. Fix remaining manually.[/yellow]")
         return
 
-    # ── Case 2: merge conflicts in working tree ───────────────────────────────
     if git.has_merge_conflicts(cwd):
         console.print(Rule("[bold red]Merge conflicts[/bold red]"))
         files = git.get_conflict_files(cwd)
@@ -480,7 +478,6 @@ def run(path: str | None = None) -> None:
             console.print(f"[yellow]{resolved}/{len(files)} resolved. Fix remaining manually.[/yellow]")
         return
 
-    # ── Case 3: clean working tree → push ────────────────────────────────────
     if not remote:
         console.print("[green]Working tree clean, no remote configured.[/green]")
         return
