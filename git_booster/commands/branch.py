@@ -116,41 +116,14 @@ def _cmd_help() -> None:
     table.add_column("Aliases", style="dim")
     table.add_column("Description")
 
-    table.add_row(
-        "gai branch",
-        "",
-        "Interactive menu (create / list / switch / clean)"
-    )
-    table.add_row(
-        "gai branch create",
-        "new",
-        "AI-generated branch name from your description"
-    )
-    table.add_row(
-        "gai branch list",
-        "ls",
-        "List all local and remote branches with date & author"
-    )
-    table.add_row(
-        "gai branch switch",
-        "checkout, sw",
-        "Interactive branch switcher"
-    )
-    table.add_row(
-        "gai branch rm <name>",
-        "delete, remove",
-        "Delete a branch locally (and optionally on remote)"
-    )
-    table.add_row(
-        "gai branch clean",
-        "prune",
-        "Delete all merged branches (local and/or remote)"
-    )
-    table.add_row(
-        "gai branch --help",
-        "-h, help",
-        "Show this help"
-    )
+    table.add_row("gai branch", "", "Interactive menu")
+    table.add_row("gai branch create", "new", "AI-generated branch name from your description")
+    table.add_row("gai branch list", "ls", "List all local and remote branches")
+    table.add_row("gai branch switch", "checkout, sw", "Interactive branch switcher")
+    table.add_row("gai branch merge", "mg", "Merge a branch into another")
+    table.add_row("gai branch rm <name>", "delete, remove", "Delete a branch locally (and optionally on remote)")
+    table.add_row("gai branch clean", "prune", "Delete all merged branches")
+    table.add_row("gai branch --help", "-h, help", "Show this help")
 
     console.print(table)
 
@@ -160,6 +133,7 @@ def _cmd_help() -> None:
     console.print("\n[bold]Examples:[/bold]")
     console.print("  [dim]$[/dim] gai branch create")
     console.print("  [dim]$[/dim] gai branch switch")
+    console.print("  [dim]$[/dim] gai branch merge")
     console.print("  [dim]$[/dim] gai branch rm fix/old-feature")
     console.print("  [dim]$[/dim] gai branch clean")
 
@@ -178,7 +152,6 @@ def _cmd_create(cwd: str) -> None:
     console.print("[dim]A.I is generating branch name...[/dim]")
     suggested = _ai_branch_name(description, branch_type, ticket)
 
-    # ── FIX: detect conflict with existing branch prefix ──────────────────
     _, existing_raw, _ = _run(["git", "branch"], cwd)
     existing = [l.strip().lstrip("* ") for l in existing_raw.splitlines()]
 
@@ -187,7 +160,6 @@ def _cmd_create(cwd: str) -> None:
         console.print(f"[yellow]⚠ A branch named '{prefix}' already exists — cannot create '{suggested}'.[/yellow]")
         console.print("[dim]Git cannot create a branch whose prefix matches an existing branch name.[/dim]")
         suggested = Prompt.ask("Enter a different branch name", default=f"{branch_type}-{suggested.split('/', 1)[-1]}")
-    # ──────────────────────────────────────────────────────────────────────
 
     console.print(f"\nSuggested branch name: [bold cyan]{suggested}[/bold cyan]")
     choice = Prompt.ask("Use this name?", choices=["yes", "edit", "abort"], default="yes")
@@ -290,16 +262,113 @@ def _cmd_switch(cwd: str) -> None:
         else:
             console.print("[yellow]⚠ Run: git stash pop[/yellow]")
 
+def _cmd_merge(cwd: str) -> None:
+    """Merge a source branch into a target branch."""
+    console.print(Panel("[bold cyan]Merge branches[/bold cyan]", expand=False))
+
+    branches = _all_branches(cwd)
+    local = [b for b in branches if not b["remote"]]
+    current = _current_branch(cwd)
+
+    if len(local) < 2:
+        console.print("[yellow]You need at least 2 local branches to merge.[/yellow]")
+        return
+
+    # ── Pick source branch ────────────────────────────────────────────────
+    console.print("\n[bold]Source branch[/bold] (branch to merge FROM):")
+    for i, b in enumerate(local, 1):
+        marker = "[green]●[/green]" if b["current"] else " "
+        console.print(f"  {marker} [cyan]{i}.[/cyan] {b['name']}  [dim]{b['date']}[/dim]")
+
+    src_choice = Prompt.ask("\nSource branch number", default="1")
+    try:
+        src = local[int(src_choice) - 1]["name"]
+    except (ValueError, IndexError):
+        console.print("[red]Invalid choice.[/red]")
+        return
+
+    # ── Pick target branch ────────────────────────────────────────────────
+    console.print(f"\n[bold]Target branch[/bold] (branch to merge INTO) — current: [cyan]{current}[/cyan]:")
+    targets = [b for b in local if b["name"] != src]
+    for i, b in enumerate(targets, 1):
+        marker = "[green]●[/green]" if b["current"] else " "
+        console.print(f"  {marker} [cyan]{i}.[/cyan] {b['name']}  [dim]{b['date']}[/dim]")
+
+    tgt_choice = Prompt.ask("\nTarget branch number", default="1")
+    try:
+        tgt = targets[int(tgt_choice) - 1]["name"]
+    except (ValueError, IndexError):
+        console.print("[red]Invalid choice.[/red]")
+        return
+
+    console.print(f"\n[yellow]Will merge[/yellow] [bold cyan]{src}[/bold cyan] [yellow]→[/yellow] [bold cyan]{tgt}[/bold cyan]")
+    if not Confirm.ask("Proceed?", default=True):
+        console.print("[yellow]Aborted.[/yellow]")
+        return
+
+    # ── Stash if needed ───────────────────────────────────────────────────
+    stashed = False
+    if _has_uncommitted(cwd):
+        console.print("[yellow]⚠ Uncommitted changes detected.[/yellow]")
+        if Confirm.ask("Stash changes before merging?", default=True):
+            if _stash(cwd):
+                console.print("[green]✓ Changes stashed.[/green]")
+                stashed = True
+        else:
+            console.print("[yellow]Aborted — commit or stash your changes first.[/yellow]")
+            return
+
+    # ── Switch to target ──────────────────────────────────────────────────
+    if current != tgt:
+        code, _, err = _run(["git", "checkout", tgt], cwd)
+        if code != 0:
+            console.print(f"[red]Failed to switch to '{tgt}': {err}[/red]")
+            if stashed:
+                _stash_pop(cwd)
+            return
+        console.print(f"[green]✓ Switched to '{tgt}'.[/green]")
+
+    # ── Merge ─────────────────────────────────────────────────────────────
+    console.print(f"[dim]→ git merge {src}[/dim]")
+    code, out, err = _run(["git", "merge", src], cwd)
+
+    if code == 0:
+        console.print(f"[green]✓ Merge successful.[/green]")
+        if out:
+            console.print(f"[dim]{out}[/dim]")
+    else:
+        console.print(f"[red]✗ Merge failed — conflicts detected.[/red]")
+        console.print(f"[dim]{err}[/dim]")
+        console.print("\n[yellow]Tip:[/yellow] run [bold]gai resolve[/bold] to let AI fix the conflicts.")
+        if stashed:
+            console.print("[yellow]⚠ Your stash is still saved — run: git stash pop[/yellow]")
+        return
+
+    # ── Restore stash ─────────────────────────────────────────────────────
+    if stashed:
+        if _stash_pop(cwd):
+            console.print("[green]✓ Stash restored.[/green]")
+        else:
+            console.print("[yellow]⚠ Run: git stash pop[/yellow]")
+
+    # ── Push ──────────────────────────────────────────────────────────────
+    if _has_remote(cwd):
+        if Confirm.ask(f"Push '{tgt}' to remote?", default=True):
+            code2, _, err2 = _run(["git", "push", "origin", tgt], cwd)
+            if code2 == 0:
+                console.print(f"[green]✓ Pushed origin/{tgt}.[/green]")
+            else:
+                console.print(f"[yellow]Push failed: {err2}[/yellow]")
+                console.print("[yellow]Tip:[/yellow] run [bold]gai resolve[/bold] to fix push errors.")
+
 def _cmd_rm(cwd: str, args: list[str]) -> None:
     console.print(Panel("[bold cyan]Delete a branch[/bold cyan]", expand=False))
 
-    # Get branch name from args or prompt
     if args:
         target = args[0]
     else:
         branches = _all_branches(cwd)
         local = [b for b in branches if not b["remote"]]
-        current = _current_branch(cwd)
 
         deletable = [b for b in local if not b["current"]]
         if not deletable:
@@ -323,13 +392,11 @@ def _cmd_rm(cwd: str, args: list[str]) -> None:
         console.print("[dim]Switch to another branch first: gai branch switch[/dim]")
         return
 
-    # Confirm deletion
     console.print(f"\n[yellow]Branch to delete:[/yellow] [bold]{target}[/bold]")
     if not Confirm.ask("Delete this branch locally?", default=False):
         console.print("[yellow]Aborted.[/yellow]")
         return
 
-    # Try safe delete first (-d), then force (-D) if not merged
     code, _, err = _run(["git", "branch", "-d", target], cwd)
     if code != 0 and "not fully merged" in err:
         console.print(f"[yellow]⚠ Branch '{target}' is not fully merged.[/yellow]")
@@ -345,7 +412,6 @@ def _cmd_rm(cwd: str, args: list[str]) -> None:
         console.print(f"[red]Failed to delete branch: {err}[/red]")
         return
 
-    # Offer remote deletion
     if _has_remote(cwd):
         _, remote_branches, _ = _run(["git", "branch", "-r"], cwd)
         on_remote = any(target in line for line in remote_branches.splitlines())
@@ -386,9 +452,7 @@ def _cmd_clean(cwd: str) -> None:
                 console.print(f"[yellow]  Could not delete {branch}: {err}[/yellow]")
 
         if delete_remote:
-            code, _, err = _run(
-                ["git", "push", "origin", "--delete", branch], cwd
-            )
+            code, _, err = _run(["git", "push", "origin", "--delete", branch], cwd)
             if code == 0:
                 console.print(f"[green]✓ Deleted remote:[/green] origin/{branch}")
             else:
@@ -399,7 +463,6 @@ def _cmd_clean(cwd: str) -> None:
 def run_branch(args: list[str]) -> None:
     cwd = _project_dir()
 
-    # --help / -h / help
     if args and args[0] in ("--help", "-h", "help"):
         _cmd_help()
         return
@@ -409,8 +472,9 @@ def run_branch(args: list[str]) -> None:
         console.print("  [cyan]1.[/cyan] Create a new branch")
         console.print("  [cyan]2.[/cyan] List all branches")
         console.print("  [cyan]3.[/cyan] Switch branch")
-        console.print("  [cyan]4.[/cyan] Delete a branch")
-        console.print("  [cyan]5.[/cyan] Clean merged branches")
+        console.print("  [cyan]4.[/cyan] Merge two branches")
+        console.print("  [cyan]5.[/cyan] Delete a branch")
+        console.print("  [cyan]6.[/cyan] Clean merged branches")
         choice = Prompt.ask("\nChoice", default="1")
         if choice == "1":
             _cmd_create(cwd)
@@ -419,8 +483,10 @@ def run_branch(args: list[str]) -> None:
         elif choice == "3":
             _cmd_switch(cwd)
         elif choice == "4":
-            _cmd_rm(cwd, [])
+            _cmd_merge(cwd)
         elif choice == "5":
+            _cmd_rm(cwd, [])
+        elif choice == "6":
             _cmd_clean(cwd)
         return
 
@@ -431,6 +497,8 @@ def run_branch(args: list[str]) -> None:
         _cmd_list(cwd)
     elif sub in ("switch", "checkout", "sw"):
         _cmd_switch(cwd)
+    elif sub in ("merge", "mg"):
+        _cmd_merge(cwd)
     elif sub in ("rm", "delete", "remove"):
         _cmd_rm(cwd, args[1:])
     elif sub in ("clean", "prune"):
