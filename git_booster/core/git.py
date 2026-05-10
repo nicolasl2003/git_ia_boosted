@@ -354,3 +354,6 @@ def get_remote(cwd: str | None = None) -> str | None:
 def get_current_branch(cwd: str | None = None) -> str:
     """Return the current branch name."""
     return run(["rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd).strip()
+
+# alias
+get_branch = get_current_branch
