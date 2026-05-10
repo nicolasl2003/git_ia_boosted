@@ -146,6 +146,10 @@ Settings stored in `~/.config/git-booster/config.env`.
 
 Environment variables always take priority over the config file.
 
+
+
+
+
 ---
 
 ## gai commit — workflow
