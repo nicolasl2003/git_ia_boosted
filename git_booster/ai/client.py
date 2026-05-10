@@ -244,22 +244,44 @@ def _load_config() -> dict:
             if not line or line.startswith("#") or "=" not in line:
                 continue
             k, _, v = line.partition("=")
-            cfg[k.strip().lower()] = v.strip()
+            k = k.strip().upper()
+            v = v.strip()
+            # map GAI_MODEL -> model, GAI_PROVIDER -> provider, etc.
+            if k == "GAI_PROVIDER":
+                cfg["provider"] = v
+            elif k == "GAI_MODEL":
+                cfg["model"] = v
+            elif k == "OLLAMA_HOST":
+                cfg["ollama_host"] = v
+            elif k == "ANTHROPIC_API_KEY":
+                cfg["anthropic_api_key"] = v
+            elif k == "OPENAI_API_KEY":
+                cfg["openai_api_key"] = v
+            elif k == "OPENAI_BASE_URL":
+                cfg["openai_base_url"] = v
+            elif k == "GAI_TIMEOUT":
+                cfg["timeout"] = v
 
     # env vars always win
-    for key in (
-        "GAI_PROVIDER", "GAI_MODEL", "OLLAMA_HOST",
-        "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL",
-        "GAI_TIMEOUT",
-    ):
-        val = os.environ.get(key)
+    overrides = {
+        "GAI_PROVIDER":      "provider",
+        "GAI_MODEL":         "model",
+        "OLLAMA_HOST":       "ollama_host",
+        "ANTHROPIC_API_KEY": "anthropic_api_key",
+        "OPENAI_API_KEY":    "openai_api_key",
+        "OPENAI_BASE_URL":   "openai_base_url",
+        "GAI_TIMEOUT":       "timeout",
+    }
+    for env_key, cfg_key in overrides.items():
+        val = os.environ.get(env_key)
         if val:
-            cfg[key.lower().replace("gai_", "")] = val
+            cfg[cfg_key] = val
 
     cfg.setdefault("provider", "ollama")
     cfg.setdefault("model",    "llama3.2")
 
     return cfg
+
 
 # ---------------------------------------------------------------------------
 # custom exceptions
