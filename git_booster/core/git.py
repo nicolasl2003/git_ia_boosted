@@ -326,3 +326,11 @@ def run(args: list[str], cwd: Optional[str] = None) -> str:
 def list_untracked_files(cwd: Optional[str] = None) -> list[str]:
     result = _run(["git", "ls-files", "--others", "--exclude-standard"], cwd=cwd, check=False)
     return [f for f in result.stdout.strip().splitlines() if f]
+
+
+# Push error constants
+PUSH_ERR_FETCH_FIRST = "fetch first"
+PUSH_ERR_NO_UPSTREAM = "no upstream"
+PUSH_ERR_BAD_REFSPEC = "bad refspec"
+PUSH_ERR_AUTH = "authentication"
+PUSH_ERR_NO_REMOTE = "no remote"
