@@ -357,3 +357,35 @@ def get_current_branch(cwd: str | None = None) -> str:
 
 # alias
 get_branch = get_current_branch
+
+
+def has_uncommitted_changes(path: str = ".") -> bool:
+    r = _run(["git", "status", "--porcelain"], cwd=path)
+    return bool(r.stdout.strip())
+
+
+def list_remote_branches(remote: str = "origin", path: str = ".") -> list[str]:
+    r = _run(["git", "branch", "-r"], cwd=path)
+    branches = []
+    for line in r.stdout.splitlines():
+        line = line.strip()
+        if line.startswith(f"{remote}/") and "HEAD" not in line:
+            branches.append(line[len(remote)+1:])
+    return branches
+
+
+def set_upstream(remote: str, branch: str, path: str = ".") -> tuple[bool, str]:
+    r = _run(["git", "push", "--set-upstream", remote, branch], cwd=path)
+    return r.returncode == 0, r.stdout + r.stderr
+
+
+def stash_push(path: str = ".") -> tuple[bool, str]:
+    r = _run(["git", "stash", "push", "-m", "gai-auto-stash"], cwd=path)
+    ok = r.returncode == 0
+    ref = "stash@{0}" if ok else ""
+    return ok, ref
+
+
+def stash_pop(path: str = ".") -> tuple[bool, str]:
+    r = _run(["git", "stash", "pop"], cwd=path)
+    return r.returncode == 0, r.stdout + r.stderr
