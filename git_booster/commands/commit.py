@@ -50,16 +50,9 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
 
     run_trigger("pre-commit", cwd=cwd)
 
-<<<<<<< HEAD
-    # ---- 3. Generate message -------------------------------------------------
-    with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
-        system, user = prompts.commit_prompt(diff, raw_status)
-        message = ai.ask(f"{system}\n\n{user}", cwd=cwd)
-=======
     with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
         system, user = prompts.commit_prompt(diff, raw_status)
         message = ai.ask(f"{system}\n\n{user}", cwd=cwd, max_tokens=256)
->>>>>>> fix/feature-fix
 
     while True:
         console.print(Panel(message, title="Generated commit message", border_style="green"))
@@ -86,11 +79,7 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
             style_hint = Prompt.ask("[cyan]How should this commit be described?[/cyan]")
             with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
                 regen_system, regen_user = prompts.commit_prompt(diff, raw_status, style_hint=style_hint)
-<<<<<<< HEAD
-                message = ai.ask(f"{regen_system}\n\n{regen_user}", cwd=cwd)
-=======
                 message = ai.ask(f"{regen_system}\n\n{regen_user}", cwd=cwd, max_tokens=128)
->>>>>>> fix/feature-fix
             continue
 
         elif choice == "edit":
