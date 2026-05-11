@@ -2,6 +2,7 @@ from rich.console import Console
 from rich.text import Text
 from rich.panel import Panel
 from rich import box
+from git_booster.ai.client import _load_config
 
 console = Console()
 
@@ -10,6 +11,10 @@ AUTHOR  = "nicolasl2003 | login42: nilinott"
 GITHUB  = "https://github.com/nicolasl2003/git_ia_boosted"
 
 def show_version():
+    cfg      = _load_config()
+    provider = cfg.get("provider", "ollama")
+    model    = cfg.get("model", "llama3.2")
+
     title = Text()
     title.append("⚡ gai", style="bold cyan")
     title.append("-", style="dim white")
@@ -26,10 +31,10 @@ def show_version():
     content.append("0% cloud", style="bold magenta")
     content.append("\n\n")
     content.append("Provider  ", style="dim white")
-    content.append("ollama", style="bold yellow")
+    content.append(provider, style="bold yellow")
     content.append("  │  ", style="dim white")
     content.append("Model  ", style="dim white")
-    content.append("llama3.2", style="bold yellow")
+    content.append(model, style="bold yellow")
     content.append("\n\n")
     content.append("─" * 36, style="dim cyan")
     content.append("\n")

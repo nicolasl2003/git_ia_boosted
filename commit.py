@@ -1,7 +1,4 @@
-"""
-`gai commit` — generates a commit message from the staged diff via AI,
-asks the user to validate/modify, then commits and optionally pushes.
-"""
+from __future__ import annotations
 
 import os
 import tempfile
@@ -9,58 +6,68 @@ import subprocess
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.prompt import Confirm, Prompt
+from rich.prompt import Prompt, Confirm
 
-from git_booster.core import git
-from git_booster.ai import client as ai, prompts
+from git_booster import ai
+from git_booster.ai import prompts
 from git_booster.skills import run_trigger
+from git_booster import git
 
 console = Console()
 
 
 def _edit_in_editor(message: str) -> str:
     editor = os.environ.get("EDITOR", "nano")
-    with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".txt", mode="w", delete=False, encoding="utf-8") as f:
         f.write(message)
-        tmp_path = f.name
-    subprocess.run([editor, tmp_path])
-    with open(tmp_path) as f:
-        edited = f.read().strip()
-    os.unlink(tmp_path)
-    return edited
+        tmpfile = f.name
+    subprocess.call([editor, tmpfile])
+    with open(tmpfile, encoding="utf-8") as f:
+        result = f.read().strip()
+    os.unlink(tmpfile)
+    return result
 
 
-def _get_remotes(cwd: str | None) -> list[str]:
-    try:
-        result = git.run(["remote"], cwd=cwd)
-        return [r.strip() for r in result.splitlines() if r.strip()]
-    except Exception:
-        return []
+def _get_remotes(cwd: str) -> list[str]:
+    result = git._run(["git", "remote"], cwd=cwd, check=False)
+    return [r for r in result.stdout.splitlines() if r.strip()]
 
 
 def run(path: str | None = None, no_confirm: bool = False) -> None:
     cwd = path or os.getcwd()
 
-    diff = git.staged_diff(cwd)
+    if not git.is_git_repo(cwd):
+        console.print("[red]Not inside a git repository.[/red]")
+        return
+
+    # ---- 1. Check there is something staged ---------------------------------
+    diff = git.diff_staged(cwd)
     if not diff:
-        console.print("[yellow]No staged changes. Run `gai add` first.[/yellow]")
+        unstaged = git.diff_unstaged(cwd)
+        untracked = git.list_untracked_files(cwd)
+        if unstaged or untracked:
+            console.print(
+                "[bold red]Nothing staged.[/bold red] You have unstaged changes.\n"
+                "Run [bold cyan]gai add[/bold cyan] or [bold cyan]git add .[/bold cyan] first, then retry."
+            )
+        else:
+            console.print(
+                "[bold yellow]Nothing to commit.[/bold yellow] "
+                "Working tree is clean."
+            )
         return
 
     raw_status = git.status(cwd)
 
+    # ---- 2. pre-commit trigger -----------------------------------------------
     run_trigger("pre-commit", cwd=cwd)
 
-<<<<<<< HEAD
     # ---- 3. Generate message -------------------------------------------------
     with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
         system, user = prompts.commit_prompt(diff, raw_status)
-        message = ai.ask(f"{system}\n\n{user}", cwd=cwd)
-=======
-    with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
-        system, user = prompts.commit_prompt(diff, raw_status)
         message = ai.ask(f"{system}\n\n{user}", cwd=cwd, max_tokens=256)
->>>>>>> fix/feature-fix
 
+    # ---- 4. Validate / modify loop ------------------------------------------
     while True:
         console.print(Panel(message, title="Generated commit message", border_style="green"))
 
@@ -86,11 +93,7 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
             style_hint = Prompt.ask("[cyan]How should this commit be described?[/cyan]")
             with console.status("[bold yellow]A.I is processing...[/bold yellow]"):
                 regen_system, regen_user = prompts.commit_prompt(diff, raw_status, style_hint=style_hint)
-<<<<<<< HEAD
-                message = ai.ask(f"{regen_system}\n\n{regen_user}", cwd=cwd)
-=======
                 message = ai.ask(f"{regen_system}\n\n{regen_user}", cwd=cwd, max_tokens=128)
->>>>>>> fix/feature-fix
             continue
 
         elif choice == "edit":
@@ -105,15 +108,18 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
             final_message = edited
             break
 
-        else:
+        else:  # commit
             final_message = message
             break
 
+    # ---- 5. Commit -----------------------------------------------------------
     output = git.commit(final_message, cwd)
     console.print(f"[green]{output}[/green]")
 
+    # ---- 6. post-commit trigger ----------------------------------------------
     run_trigger("post-commit", cwd=cwd)
 
+    # ---- 7. Push (optional, with auto error-fix) ----------------------------
     remotes = _get_remotes(cwd)
     if not remotes:
         return

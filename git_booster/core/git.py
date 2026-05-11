@@ -19,7 +19,6 @@ def _run(
     check: bool = True,
     env: Optional[dict] = None,
 ) -> subprocess.CompletedProcess:
-    """Run a git command and return the CompletedProcess result."""
     try:
         result = subprocess.run(
             args,
@@ -36,25 +35,25 @@ def _run(
 
 
 def is_git_repo(path: Optional[str] = None) -> bool:
-    """Return True if the given path (or cwd) is inside a git repository."""
     result = _run(["git", "rev-parse", "--is-inside-work-tree"], cwd=path, check=False)
     return result.returncode == 0
 
 
 def get_repo_root(path: Optional[str] = None) -> str:
-    """Return the absolute path of the repository root."""
     result = _run(["git", "rev-parse", "--show-toplevel"], cwd=path)
     return result.stdout.strip()
 
 
 def status(path: Optional[str] = None) -> str:
-    """Return the raw output of `git status`."""
     result = _run(["git", "status"], cwd=path)
     return result.stdout.strip()
 
 
+def get_status(path: Optional[str] = None) -> str:
+    return status(path)
+
+
 def status_porcelain(path: Optional[str] = None) -> list[tuple[str, str]]:
-    """Return a parsed list of (status_code, filepath) tuples from `git status --porcelain`."""
     result = _run(["git", "status", "--porcelain"], cwd=path)
     entries = []
     for line in result.stdout.splitlines():
@@ -66,47 +65,94 @@ def status_porcelain(path: Optional[str] = None) -> list[tuple[str, str]]:
 
 
 def diff_staged(path: Optional[str] = None) -> str:
-    """Return the diff of staged changes."""
     result = _run(["git", "diff", "--staged"], cwd=path)
     return result.stdout.strip()
 
 
+def get_staged_diff(path: Optional[str] = None) -> str:
+    return diff_staged(path)
+
+
+def staged_diff(path: Optional[str] = None) -> str:
+    return diff_staged(path)
+
+
 def diff_unstaged(path: Optional[str] = None) -> str:
-    """Return the diff of unstaged changes."""
     result = _run(["git", "diff"], cwd=path)
     return result.stdout.strip()
 
 
 def diff_head(path: Optional[str] = None) -> str:
-    """Return the full diff between working tree and HEAD."""
     result = _run(["git", "diff", "HEAD"], cwd=path, check=False)
     return result.stdout.strip()
 
 
 def add(files: list[str], path: Optional[str] = None) -> None:
-    """Stage the given files (equivalent to `git add <files>`)."""
     _run(["git", "add"] + files, cwd=path)
 
 
 def add_all(path: Optional[str] = None) -> None:
-    """Stage all changes (equivalent to `git add .`)."""
     _run(["git", "add", "."], cwd=path)
 
 
+def git_add(file: Optional[str] = None, path: Optional[str] = None) -> None:
+    if file:
+        add([file], path)
+    else:
+        add_all(path)
+
+
 def commit(message: str, path: Optional[str] = None) -> str:
-    """Create a commit with the given message. Returns git output."""
     result = _run(["git", "commit", "-m", message], cwd=path)
     return result.stdout.strip()
 
 
+def git_commit(message: str, path: Optional[str] = None) -> subprocess.CompletedProcess:
+    return _run(["git", "commit", "-m", message], cwd=path, check=False)
+
+
+def push(branch: Optional[str] = None, remote: str = "origin", path: Optional[str] = None) -> tuple[bool, str]:
+    args = ["git", "push", remote]
+    if branch:
+        args.append(branch)
+    result = _run(args, cwd=path, check=False)
+    out = (result.stdout + result.stderr).strip()
+    return result.returncode == 0, out
+
+
+def git_push(branch: Optional[str] = None, remote: str = "origin", path: Optional[str] = None) -> tuple[bool, str]:
+    return push(branch, remote, path)
+
+
+def pull(branch: Optional[str] = None, remote: str = "origin", strategy: str = "rebase", path: Optional[str] = None) -> tuple[bool, str]:
+    args = ["git", "pull", f"--{strategy}", remote]
+    if branch:
+        args.append(branch)
+    result = _run(args, cwd=path, check=False)
+    out = (result.stdout + result.stderr).strip()
+    return result.returncode == 0, out
+
+
+def git_pull(branch: Optional[str] = None, remote: str = "origin", strategy: str = "rebase", path: Optional[str] = None) -> tuple[bool, str]:
+    return pull(branch, remote, strategy, path)
+
+
+def get_current_branch(path: Optional[str] = None) -> str:
+    result = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=path, check=False)
+    return result.stdout.strip()
+
+
+def get_remote_url(remote: str = "origin", path: Optional[str] = None) -> str:
+    result = _run(["git", "remote", "get-url", remote], cwd=path, check=False)
+    return result.stdout.strip()
+
+
 def list_files_tracked(path: Optional[str] = None) -> list[str]:
-    """Return all files tracked by git."""
     result = _run(["git", "ls-files"], cwd=path)
     return result.stdout.splitlines()
 
 
 def list_files_all(path: Optional[str] = None) -> list[str]:
-    """Return all files in the working tree (tracked + untracked, excluding ignored)."""
     result = _run(
         ["git", "ls-files", "--others", "--exclude-standard", "--cached"],
         cwd=path,
@@ -115,13 +161,11 @@ def list_files_all(path: Optional[str] = None) -> list[str]:
 
 
 def has_merge_conflicts(path: Optional[str] = None) -> bool:
-    """Return True if there are unresolved merge conflicts in the working tree."""
     entries = status_porcelain(path)
     return any(code in ("UU", "AA", "DD", "AU", "UA", "DU", "UD") for code, _ in entries)
 
 
 def get_conflict_files(path: Optional[str] = None) -> list[str]:
-    """Return the list of files with merge conflicts."""
     entries = status_porcelain(path)
     return [
         f for code, f in entries
@@ -129,222 +173,27 @@ def get_conflict_files(path: Optional[str] = None) -> list[str]:
     ]
 
 
+def get_conflicts(path: Optional[str] = None) -> list[str]:
+    return get_conflict_files(path)
+
+
 def read_conflict_file(filepath: str, repo_root: Optional[str] = None) -> str:
-    """Read the raw content of a conflict file."""
-    base = repo_root or os.getcwd()
-    full_path = Path(base) / filepath
-    return full_path.read_text(encoding="utf-8", errors="replace")
+    root = repo_root or os.getcwd()
+    full_path = Path(root) / filepath
+    return full_path.read_text(encoding="utf-8")
 
 
 def write_resolved_file(filepath: str, content: str, repo_root: Optional[str] = None) -> None:
-    """Write resolved content back to a conflict file."""
-    base = repo_root or os.getcwd()
-    full_path = Path(base) / filepath
+    root = repo_root or os.getcwd()
+    full_path = Path(root) / filepath
     full_path.write_text(content, encoding="utf-8")
 
 
 def mark_resolved(filepath: str, path: Optional[str] = None) -> None:
-    """Mark a conflict file as resolved by staging it."""
     _run(["git", "add", filepath], cwd=path)
 
 
-def get_log(n: int = 10, path: Optional[str] = None) -> str:
-    """Return the last n commits as a formatted string.
-    Returns an empty string if there are no commits yet."""
-    result = _run(
-        ["git", "log", f"-{n}", "--oneline", "--decorate"],
-        cwd=path,
-        check=False,
-    )
-    if result.returncode != 0:
-        return ""
-    return result.stdout.strip()
-
-
-def get_branch(path: Optional[str] = None) -> str:
-    """Return the current branch name.
-    Falls back to reading .git/HEAD directly if there are no commits yet."""
-    result = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=path, check=False)
-    if result.returncode == 0 and result.stdout.strip() not in ("", "HEAD"):
-        return result.stdout.strip()
-    repo_root = get_repo_root(path)
-    head_file = Path(repo_root) / ".git" / "HEAD"
-    if head_file.exists():
-        content = head_file.read_text().strip()
-        if content.startswith("ref: refs/heads/"):
-            return content.replace("ref: refs/heads/", "")
-    return "unknown"
-
-
-def list_untracked_files(path: Optional[str] = None) -> list[str]:
-    """Return untracked files (not yet staged, not ignored)."""
-    result = _run(
-        ["git", "ls-files", "--others", "--exclude-standard"],
-        cwd=path,
-    )
-    return result.stdout.splitlines()
-
-
-def is_tracked(filepath: str, path: Optional[str] = None) -> bool:
-    """Return True if the file is tracked by git."""
-    result = _run(["git", "ls-files", "--error-unmatch", filepath], cwd=path, check=False)
-    return result.returncode == 0
-
-
-def rm_file(filepath: str, path: Optional[str] = None, force: bool = False, cached: bool = False) -> None:
-    """Remove a file from git index. cached=True keeps it on disk."""
-    args = ["git", "rm"]
-    if force:
-        args.append("-f")
-    if cached:
-        args.append("--cached")
-    args.append(filepath)
-    _run(args, cwd=path)
-
-
-def push(remote: str = "origin", branch: str = "", set_upstream: bool = False,
-         path: Optional[str] = None) -> tuple[bool, str]:
-    """Push to remote. Returns (success, full_output)."""
-    args = ["git", "push"]
-    if set_upstream:
-        args += ["-u", remote, branch or get_branch(path)]
-    elif branch:
-        args += [remote, branch]
-    else:
-        args += [remote]
-    result = _run(args, cwd=path, check=False)
-    out = (result.stdout + result.stderr).strip()
-    return result.returncode == 0, out
-
-
-# Push error categories returned by parse_push_error()
-PUSH_ERR_FETCH_FIRST   = "fetch_first"
-PUSH_ERR_NO_UPSTREAM   = "no_upstream"
-PUSH_ERR_REFSPEC       = "refspec"
-PUSH_ERR_REJECTED      = "rejected"
-PUSH_ERR_AUTH          = "auth"
-PUSH_ERR_NO_REMOTE     = "no_remote"
-PUSH_ERR_UNKNOWN       = "unknown"
-
-
-def parse_push_error(output: str) -> str:
-    """Classify a git push error string into one of the PUSH_ERR_* constants."""
-    low = output.lower()
-
-    if ("authentication failed" in low or "could not read username" in low
-            or "permission denied" in low or "access denied" in low):
-        return PUSH_ERR_AUTH
-
-    if ("repository not found" in low
-            or "does not appear to be a git repository" in low
-            or "could not resolve host" in low
-            or "connection refused" in low):
-        return PUSH_ERR_NO_REMOTE
-
-    if ("no upstream branch" in low or "--set-upstream" in low
-            or "set-upstream" in low):
-        return PUSH_ERR_NO_UPSTREAM
-
-    if ("src refspec" in low or "does not match any" in low
-            or "invalid refspec" in low):
-        return PUSH_ERR_REFSPEC
-
-    if ("fetch first" in low
-            or ("updates were rejected" in low and "behind" in low)
-            or ("updates were rejected" in low and "fetch first" in low)):
-        return PUSH_ERR_FETCH_FIRST
-
-    if "non-fast-forward" in low:
-        return PUSH_ERR_REJECTED
-
-    if "rejected" in low:
-        return PUSH_ERR_FETCH_FIRST
-
-    return PUSH_ERR_UNKNOWN
-
-
-def list_remote_branches(remote: str = "origin", path: Optional[str] = None) -> list[str]:
-    """Return list of branch names on the remote (after fetch)."""
-    result = _run(["git", "branch", "-r"], cwd=path, check=False)
-    branches = []
-    prefix = f"{remote}/"
-    for line in result.stdout.splitlines():
-        line = line.strip()
-        if line.startswith(prefix) and "HEAD" not in line:
-            branches.append(line[len(prefix):])
-    return branches
-
-
-def set_upstream(remote: str, branch: str, path: Optional[str] = None) -> tuple[bool, str]:
-    """Set the upstream tracking branch and push."""
-    result = _run(
-        ["git", "push", "--set-upstream", remote, branch],
-        cwd=path, check=False,
-    )
-    out = (result.stdout + result.stderr).strip()
-    return result.returncode == 0, out
-
-
-def fetch(remote: str = "origin", path: Optional[str] = None) -> tuple[bool, str]:
-    """Fetch from remote. Returns (success, error_message)."""
-    result = _run(["git", "fetch", remote], cwd=path, check=False)
-    return result.returncode == 0, result.stderr.strip()
-
-
-def get_remote(path: Optional[str] = None) -> str | None:
-    """Return the first configured remote, or None."""
-    result = _run(["git", "remote"], cwd=path, check=False)
-    remotes = [r for r in result.stdout.splitlines() if r.strip()]
-    return remotes[0] if remotes else None
-
-
-def is_behind_remote(branch: str, remote: str = "origin", path: Optional[str] = None) -> bool:
-    """Return True if local branch is behind its remote counterpart."""
-    result = _run(
-        ["git", "rev-list", "--count", f"HEAD..{remote}/{branch}"],
-        cwd=path, check=False,
-    )
-    if result.returncode != 0:
-        return False
-    try:
-        return int(result.stdout.strip()) > 0
-    except ValueError:
-        return False
-
-
-def is_ahead_of_remote(branch: str, remote: str = "origin", path: Optional[str] = None) -> bool:
-    """Return True if local branch has commits not on remote."""
-    result = _run(
-        ["git", "rev-list", "--count", f"{remote}/{branch}..HEAD"],
-        cwd=path, check=False,
-    )
-    if result.returncode != 0:
-        return False
-    try:
-        return int(result.stdout.strip()) > 0
-    except ValueError:
-        return False
-
-
-def pull(remote: str = "origin", branch: str = "HEAD", rebase: bool = False,
-         path: Optional[str] = None) -> tuple[bool, str]:
-    """Pull from remote. Returns (success, output)."""
-    args = ["git", "pull", remote, branch]
-    if rebase:
-        args.insert(2, "--rebase")
-    result = _run(args, cwd=path, check=False)
-    out = (result.stdout + result.stderr).strip()
-    return result.returncode == 0, out
-
-
-def has_uncommitted_changes(path: Optional[str] = None) -> bool:
-    """Return True if there are staged or unstaged changes in the working tree."""
-    result = _run(["git", "status", "--porcelain"], cwd=path, check=False)
-    return bool(result.stdout.strip())
-
-
-def stash_push(message: str = "gai-resolve-autostash", path: Optional[str] = None) -> tuple[bool, str]:
-    """Stash all local changes (tracked + untracked). Returns (success, stash_ref)."""
+def stash(message: str = "gai-stash", path: Optional[str] = None) -> tuple[bool, str]:
     result = _run(
         ["git", "stash", "push", "-u", "-m", message],
         cwd=path, check=False,
@@ -361,19 +210,16 @@ def stash_push(message: str = "gai-resolve-autostash", path: Optional[str] = Non
 
 
 def stash_pop(path: Optional[str] = None) -> tuple[bool, str]:
-    """Pop the most recent stash. Returns (success, output)."""
     result = _run(["git", "stash", "pop"], cwd=path, check=False)
     out = (result.stdout + result.stderr).strip()
     return result.returncode == 0, out
 
 
 def stash_drop(ref: str = "stash@{0}", path: Optional[str] = None) -> None:
-    """Drop a specific stash entry silently."""
     _run(["git", "stash", "drop", ref], cwd=path, check=False)
 
 
 def rebase_continue(path: Optional[str] = None) -> tuple[bool, str]:
-    """Continue an in-progress rebase (after conflicts resolved)."""
     env = {**os.environ, "GIT_EDITOR": "true"}
     result = _run(["git", "rebase", "--continue"], cwd=path, check=False, env=env)
     out = (result.stdout + result.stderr).strip()
@@ -381,39 +227,33 @@ def rebase_continue(path: Optional[str] = None) -> tuple[bool, str]:
 
 
 def rebase_skip(path: Optional[str] = None) -> tuple[bool, str]:
-    """Skip the current patch in an in-progress rebase."""
     result = _run(["git", "rebase", "--skip"], cwd=path, check=False)
     out = (result.stdout + result.stderr).strip()
     return result.returncode == 0, out
 
 
 def abort_merge(path: Optional[str] = None) -> tuple[bool, str]:
-    """Abort an in-progress merge."""
     result = _run(["git", "merge", "--abort"], cwd=path, check=False)
     return result.returncode == 0, result.stderr.strip()
 
 
 def abort_rebase(path: Optional[str] = None) -> tuple[bool, str]:
-    """Abort an in-progress rebase."""
     result = _run(["git", "rebase", "--abort"], cwd=path, check=False)
     return result.returncode == 0, result.stderr.strip()
 
 
 def is_merging(path: Optional[str] = None) -> bool:
-    """Return True if a merge is in progress."""
     repo_root = get_repo_root(path)
     return (Path(repo_root) / ".git" / "MERGE_HEAD").exists()
 
 
 def is_rebasing(path: Optional[str] = None) -> bool:
-    """Return True if a rebase is in progress."""
     repo_root = get_repo_root(path)
     git_dir = Path(repo_root) / ".git"
     return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
 
 
 def count_local_commits(branch: str, remote: str = "origin", path: Optional[str] = None) -> int:
-    """Return the number of local commits not yet on remote."""
     result = _run(
         ["git", "rev-list", "--count", f"{remote}/{branch}..HEAD"],
         cwd=path, check=False,
@@ -425,7 +265,6 @@ def count_local_commits(branch: str, remote: str = "origin", path: Optional[str]
 
 
 def has_merge_commits(path: Optional[str] = None, n: int = 20) -> bool:
-    """Return True if the last n commits contain merge commits (2+ parents)."""
     result = _run(
         ["git", "log", f"-{n}", "--merges", "--oneline"],
         cwd=path, check=False,
@@ -436,7 +275,6 @@ def has_merge_commits(path: Optional[str] = None, n: int = 20) -> bool:
 
 
 def get_remote_default_branch(remote: str = "origin", path: Optional[str] = None) -> str:
-    """Return the default branch of the remote (main, master, develop…)."""
     result = _run(
         ["git", "remote", "show", remote],
         cwd=path, check=False,
@@ -448,7 +286,6 @@ def get_remote_default_branch(remote: str = "origin", path: Optional[str] = None
 
 
 def diff_commit(commit_ref: str, path: Optional[str] = None) -> str:
-    """Return the diff introduced by a specific commit."""
     result = _run(
         ["git", "show", "--format=", commit_ref],
         cwd=path, check=False,
@@ -459,7 +296,6 @@ def diff_commit(commit_ref: str, path: Optional[str] = None) -> str:
 
 
 def get_commit_info(commit_ref: str, path: Optional[str] = None) -> str:
-    """Return commit metadata (author, date, message)."""
     result = _run(
         ["git", "log", "-1", "--pretty=format:%H%n%an <%ae>%n%ad%n%s", commit_ref],
         cwd=path, check=False,
@@ -470,8 +306,6 @@ def get_commit_info(commit_ref: str, path: Optional[str] = None) -> str:
 
 
 def walk_all_files(repo_root: str) -> list[str]:
-    """Walk the repo root and return all file paths relative to repo_root,
-    excluding hidden directories like .git."""
     all_files = []
     root = Path(repo_root)
     for p in root.rglob("*"):
@@ -480,3 +314,95 @@ def walk_all_files(repo_root: str) -> list[str]:
             if ".git" not in parts:
                 all_files.append(str(p.relative_to(root)))
     return all_files
+
+
+def run(args: list[str], cwd: Optional[str] = None) -> str:
+    if not args or args[0] != "git":
+        args = ["git"] + args
+    result = _run(args, cwd=cwd, check=False)
+    return result.stdout.strip()
+
+
+def list_untracked_files(cwd: Optional[str] = None) -> list[str]:
+    result = _run(["git", "ls-files", "--others", "--exclude-standard"], cwd=cwd, check=False)
+    return [f for f in result.stdout.strip().splitlines() if f]
+
+
+# Push error constants
+PUSH_ERR_FETCH_FIRST = "fetch first"
+PUSH_ERR_NO_UPSTREAM = "no upstream"
+PUSH_ERR_BAD_REFSPEC = "bad refspec"
+PUSH_ERR_AUTH = "authentication"
+PUSH_ERR_NO_REMOTE = "no remote"
+PUSH_ERR_REJECTED = "rejected"
+PUSH_ERR_PERMISSION = "permission denied"
+PUSH_ERR_UNKNOWN = "unknown"
+PUSH_ERR_REFSPEC = "refspec"
+PUSH_ERR_REMOTE_NOT_FOUND = "remote not found"
+
+
+def get_remote(cwd: str | None = None) -> str | None:
+    """Return the first configured remote, or None."""
+    try:
+        result = run(["remote"], cwd=cwd)
+        remotes = [r.strip() for r in result.splitlines() if r.strip()]
+        return remotes[0] if remotes else None
+    except Exception:
+        return None
+
+
+def get_current_branch(cwd: str | None = None) -> str:
+    """Return the current branch name."""
+    return run(["rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd).strip()
+
+# alias
+get_branch = get_current_branch
+
+
+def has_uncommitted_changes(path: str = ".") -> bool:
+    r = _run(["git", "status", "--porcelain"], cwd=path)
+    return bool(r.stdout.strip())
+
+
+def list_remote_branches(remote: str = "origin", path: str = ".") -> list[str]:
+    r = _run(["git", "branch", "-r"], cwd=path)
+    branches = []
+    for line in r.stdout.splitlines():
+        line = line.strip()
+        if line.startswith(f"{remote}/") and "HEAD" not in line:
+            branches.append(line[len(remote)+1:])
+    return branches
+
+
+def set_upstream(remote: str, branch: str, path: str = ".") -> tuple[bool, str]:
+    r = _run(["git", "push", "--set-upstream", remote, branch], cwd=path)
+    return r.returncode == 0, r.stdout + r.stderr
+
+
+def stash_push(path: str = ".") -> tuple[bool, str]:
+    r = _run(["git", "stash", "push", "-m", "gai-auto-stash"], cwd=path)
+    ok = r.returncode == 0
+    ref = "stash@{0}" if ok else ""
+    return ok, ref
+
+
+def stash_pop(path: str = ".") -> tuple[bool, str]:
+    r = _run(["git", "stash", "pop"], cwd=path)
+    return r.returncode == 0, r.stdout + r.stderr
+
+
+def parse_push_error(err: str) -> str:
+    e = err.lower()
+    if "fetch first" in e or "remote contains work" in e:
+        return "fetch_first"
+    if "rejected" in e and "non-fast-forward" in e:
+        return "rejected"
+    if "no upstream" in e or "set-upstream" in e or "set the upstream" in e:
+        return "no_upstream"
+    if "bad ref" in e or "refspec" in e or "does not match any" in e:
+        return "refspec"
+    if "authentication" in e or "permission denied" in e or "403" in e or "401" in e:
+        return "auth"
+    if "repository not found" in e or "could not resolve host" in e or "unable to access" in e:
+        return "no_remote"
+    return "unknown"
