@@ -1,4 +1,4 @@
-#!/home/user/ecole42/git_ia/git_booster/.venv/bin/python3
+#!/home/nilinott/git_ia_boosted/.venv/bin/python3
 # -*- coding: utf-8 -*-
 import re
 import sys

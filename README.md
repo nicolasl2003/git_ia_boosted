@@ -1,4 +1,5 @@
 # git-booster
+
 Local AI-powered Git — 100% private, 0% cloud, fully automated.
 
 git-booster is a smart Git wrapper using Ollama (or Anthropic/OpenAI) to automate repetitive tasks entirely on your machine:
@@ -11,63 +12,6 @@ git-booster is a smart Git wrapper using Ollama (or Anthropic/OpenAI) to automat
 - Smart branch management with AI-generated names
 - Extensible skills system (YAML or Python)
 - Zero external APIs required. Zero data leaks. No complex setup.
-
----
-
-## License
-
-This project is licensed under the **MIT License**.
-
-```
-MIT License
-
-Copyright (c) 2024 git-booster contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-### Open-source dependencies
-
-git-booster is built on top of open-source tools and libraries:
-
-| Dependency | License | Role |
-|---|---|---|
-| [Ollama](https://github.com/ollama/ollama) | MIT | Local AI model server |
-| [Python](https://www.python.org) | PSF License | Runtime |
-| [Click](https://github.com/pallets/click) | BSD-3-Clause | CLI framework |
-| [Rich](https://github.com/Textualize/rich) | MIT | Terminal formatting |
-| [python-dotenv](https://github.com/theskumar/python-dotenv) | BSD-3-Clause | Config file loading |
-| [anthropic](https://github.com/anthropics/anthropic-sdk-python) | MIT | Anthropic API client |
-| [openai](https://github.com/openai/openai-python) | Apache-2.0 | OpenAI API client |
-| [GitPython](https://github.com/gitpython-developers/GitPython) | BSD-3-Clause | Git repository interaction |
-
-> All dependencies are optional except Click and Rich.
-> Ollama, anthropic and openai are only required depending on your chosen provider.
-
-### Contributing
-
-Contributions are welcome! By contributing to git-booster, you agree that your contributions will be licensed under the MIT License.
-
-1. Fork the repository
-2. Create a feature branch: `gai branch create`
-3. Commit your changes: `gai commit`
-4. Push and open a Pull Request
 
 ---
 
@@ -110,16 +54,11 @@ Contributions are welcome! By contributing to git-booster, you agree that your c
 ## Installation
 
 ```bash
-# 1. Clone
 git clone <repo_url> ~/git_booster
-
-# 2. Create virtualenv and install
 cd ~/git_booster
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
-
-# 3. Configure (provider, model, keys)
 gai config
 ```
 
@@ -146,13 +85,9 @@ Settings stored in `~/.config/git-booster/config.env`.
 
 Environment variables always take priority over the config file.
 
-
-
-
-
 ---
 
-## gai commit — workflow
+## gai commit
 
 ```
 A.I is processing...
@@ -179,36 +114,25 @@ Push to remote? [y/N]
 ✓ Push succeeded.
 ```
 
-Push errors are handled automatically (see `gai resolve`).
-
 ---
 
-## gai resolve — full conflict resolution
+## gai resolve
 
-`gai resolve` handles the complete cycle: conflicts → resolution → push, in a single execution.
+Handles the complete cycle: conflicts → resolution → push, in a single execution.
 
 ### What it does
 
-```
-gai resolve
-```
-
-Detects the current state of the repo:
-
-- Rebase in progress with conflicts
-- Merge conflicts in working tree
-- Clean tree → attempts push directly
-
-- Stashes uncommitted changes automatically before any pull, restores them after.
-- Resolves all conflicts in one AI pass — no repeated prompts per block.
-- Continues the rebase automatically after resolution (up to 3 steps).
-- Pushes after a clean resolution.
+- Detects the current state of the repo (rebase in progress, merge conflicts, clean tree)
+- Stashes uncommitted changes automatically before any pull, restores them after
+- Resolves all conflicts in one AI pass
+- Continues the rebase automatically after resolution (up to 3 steps)
+- Pushes after a clean resolution
 
 ### Push error recovery
 
 | Error | Automatic fix |
 |---|---|
-| Remote ahead (fetch first) | `git pull` (auto rebase/merge) → re-push |
+| Remote ahead | `git pull` (auto rebase/merge) → re-push |
 | No upstream branch | `git push --set-upstream origin <branch>` |
 | Bad refspec | List remote branches, pick target or create new |
 | Authentication failure | Instructions: SSH key, PAT, credentials |
@@ -223,13 +147,7 @@ Detects the current state of the repo:
 | Single local commit | rebase |
 | Merge commits in history | merge |
 
-The recommended strategy is shown before execution. You can override it.
-
-### Anti-loop guard
-
-If conflicts keep appearing after repeated pulls, `gai resolve` stops after 3 attempts and shows clear instructions for manual resolution.
-
-### Example workflow
+### Example
 
 ```
 $ gai resolve
@@ -259,97 +177,48 @@ Stash restored.
 
 ---
 
-## gai branch — smart branch management
+## gai branch
 
-`gai branch` handles the full branch lifecycle with AI-generated names and automatic stash management.
+Smart branch management with AI-generated names.
 
-### Commands
+### Subcommands
 
-| Command | Aliases | Description |
-|---|---|---|
-| `gai branch` | | Interactive menu |
-| `gai branch create` | `new` | AI-generated branch name from your description |
-| `gai branch list` | `ls` | List all branches with date & author |
-| `gai branch switch` | `checkout`, `sw` | Interactive branch switcher |
-| `gai branch rm [name]` | `delete`, `remove` | Delete a branch locally and optionally on remote |
-| `gai branch clean` | `prune` | Delete all merged branches |
-| `gai branch --help` | `-h`, `help` | Show all commands and options |
+| Command | Description |
+|---|---|
+| `gai branch create` | AI generates a branch name from your description |
+| `gai branch list` | List all local and remote branches |
+| `gai branch switch` | Interactively switch to an existing branch |
+| `gai branch delete` | Delete a branch (with confirmation) |
+| `gai branch clean` | Delete all merged branches automatically |
 
-### Branch types
-
-```
-feat  fix  hotfix  refactor  chore  docs  test  release
-```
-
-### gai branch create — workflow
+### Example
 
 ```
 $ gai branch create
+Describe your feature: add user authentication with JWT
 
-Type [feat/fix/hotfix/...]: feat
-Ticket / issue number: 42
-Describe your feature/fix: add user authentication
+A.I is processing...
 
-A.I is generating branch name...
+┌─ Suggested branch name ─────────────────┐
+│ feat/user-authentication-jwt            │
+└─────────────────────────────────────────┘
 
-Suggested branch name: feat/42-add-user-authentication
-
-Use this name? [yes/edit/abort] (yes):
-Stash changes before creating branch? [Y/n]:
-✓ Changes stashed.
-✓ Branch 'feat/42-add-user-authentication' created and checked out.
-Push to remote? [Y/n]:
-✓ Pushed to origin/feat/42-add-user-authentication.
-✓ Stash restored.
+Create this branch? [Y/n]: y
+✓ Switched to new branch feat/user-authentication-jwt
 ```
-
-### gai branch rm — workflow
-
-```
-$ gai branch rm fix/old-feature
-
-Branch to delete: fix/old-feature
-Delete this branch locally? [y/N]: y
-✓ Local branch 'fix/old-feature' deleted.
-Also delete 'origin/fix/old-feature' on remote? [y/N]: y
-✓ Remote branch 'origin/fix/old-feature' deleted.
-```
-
-- Safe delete by default (`-d`) — warns if branch is not fully merged
-- Force delete option (`-D`) with explicit confirmation
-- Cannot delete the currently checked-out branch
-- Automatically detects if branch exists on remote
-
-### gai branch list — example output
-
-```
-  ●  main                  2024-01-15  Alice
-     feat/42-auth          2024-01-14  Bob      remote
-     fix/login-crash       2024-01-13  Alice
-```
-
-### Auto stash
-
-Any `gai branch` command that switches context (create, switch) automatically:
-
-1. Detects uncommitted changes
-2. Asks to stash before switching
-3. Restores stash after the operation
 
 ---
 
 ## Skills system
 
-Skills extend `gai` with custom commands. Two formats: YAML (simple) and Python (advanced).
+Skills extend gai with custom commands. Two formats supported: YAML (simple) and Python (advanced).
 
 ### YAML skill
 
 ```yaml
-# ~/.config/git-booster/skills/deploy.yaml
-
 name:        deploy
 description: "Deploy to production"
-trigger:     manual          # manual | pre-commit | post-commit | post-push
+trigger:     manual
 action: |
   echo "Deploying..."
   make deploy
@@ -359,8 +228,6 @@ action: |
 ### Python skill
 
 ```python
-# ~/.config/git-booster/skills/lint.py
-
 NAME        = "lint"
 DESCRIPTION = "Run linter before commit"
 TRIGGER     = "pre-commit"
@@ -382,12 +249,11 @@ def run(args: list[str], path: str | None = None) -> None:
 ### Commands
 
 ```bash
-gai skills                      # list all skills
-gai skills list                 # same
-gai skills list -t pre-commit   # filter by trigger
-
-gai skill deploy                # run a skill manually
-gai skill explain main.py       # run explain skill on a file
+gai skills
+gai skills list
+gai skills list -t pre-commit
+gai skill deploy
+gai skill explain main.py
 ```
 
 ### Auto-discovery
@@ -411,31 +277,12 @@ gai skill explain main.py       # run explain skill on a file
 ## Typical workflow
 
 ```bash
-# 1. Check state (instant)
 gai status
-
-# 2. Stage everything + generate .gitignore
 gai add
-
-# 3. Optional: review before committing
 gai review
-
-# 4. Commit with AI message + push
 gai commit
-
-# 5. Handle conflicts or push errors
 gai resolve
-
-# 6. Manage branches
-gai branch create       # new feature branch
-gai branch switch       # change branch
-gai branch rm           # delete a branch
-gai branch clean        # remove merged branches
-
-# 7. Run a custom skill
 gai skill deploy
-
-# 8. Free resources
 gai stop
 ```
 
@@ -446,29 +293,67 @@ gai stop
 ```
 git_booster/
 ├── git_booster/
-│   ├── cli.py                   # CLI entry point (click)
+│   ├── cli.py
 │   ├── core/
-│   │   └── git.py               # All git subprocess calls
+│   │   └── git.py
 │   ├── ai/
-│   │   ├── client.py            # Multi-provider client (Ollama/Anthropic/OpenAI)
-│   │   └── prompts.py           # Prompt templates
+│   │   ├── client.py
+│   │   └── prompts.py
 │   ├── skills/
-│   │   ├── __init__.py          # Auto-discovery engine (Python + YAML)
-│   │   ├── explain.py           # Built-in: explain file or diff
-│   │   ├── hello.py             # Built-in: template / smoke-test
-│   │   ├── check.yaml           # Built-in: pre-commit status check
-│   │   └── deploy.yaml          # Built-in: deploy hook template
+│   │   ├── __init__.py
+│   │   ├── explain.py
+│   │   ├── hello.py
+│   │   ├── check.yaml
+│   │   └── deploy.yaml
 │   └── commands/
-│       ├── add.py               # gai add
-│       ├── branch.py            # gai branch
-│       ├── commit.py            # gai commit
-│       ├── config.py            # gai config
-│       ├── resolve.py           # gai resolve
-│       ├── review.py            # gai review
-│       ├── rm.py                # gai rm
-│       ├── status.py            # gai status
-│       └── stop.py              # gai stop
-├── LICENSE
+│       ├── add.py
+│       ├── branch.py
+│       ├── commit.py
+│       ├── config.py
+│       ├── resolve.py
+│       ├── review.py
+│       ├── rm.py
+│       ├── status.py
+│       └── stop.py
 ├── .env.example
 └── pyproject.toml
 ```
+
+---
+
+## License
+
+MIT License
+
+Copyright (c) 2024 git-booster contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+## Open-source dependencies
+
+| Dependency | License | Role |
+|---|---|---|
+| [Ollama](https://github.com/ollama/ollama) | MIT | Local AI model server |
+| [Click](https://github.com/pallets/click) | BSD-3-Clause | CLI framework |
+| [Rich](https://github.com/Textualize/rich) | MIT | Terminal formatting |
+| [python-dotenv](https://github.com/theskumar/python-dotenv) | BSD-3-Clause | Config file loading |
+| [anthropic](https://github.com/anthropics/anthropic-sdk-python) | MIT | Anthropic API client |
+| [openai](https://github.com/openai/openai-python) | Apache-2.0 | OpenAI API client |
+| [GitPython](https://github.com/gitpython-developers/GitPython) | BSD-3-Clause | Git repository interaction |
+
+---
+
+## Contributing
+
+Contributions are welcome. By contributing to git-booster, you agree that your contributions will be licensed under the MIT License.
+
+1. Fork the repository
+2. Create a feature branch: `gai branch create`
+3. Commit your changes: `gai commit`
+4. Push and open a Pull Request
