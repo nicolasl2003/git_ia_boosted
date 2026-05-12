@@ -35,7 +35,7 @@ def ask(
     """
     Send a prompt to the configured AI provider.
     Retries MAX_RETRIES times, then returns a safe fallback string.
-    
+
     Usage:
         ask("prompt")                              # single string
         ask("system", "user")                      # system + user
@@ -46,19 +46,14 @@ def ask(
     provider = cfg["provider"]
     timeout  = timeout or int(cfg.get("timeout", DEFAULT_TIMEOUT))
 
-    # allow caller to override model
     if model:
         cfg["model"] = model
 
-    # Build final prompt
     if user_prompt:
-        # Two-argument form: system + user
         prompt = f"{system_or_prompt}\n\n{user_prompt}"
     else:
-        # Single-argument form
         prompt = system_or_prompt
 
-    # inject project context if available
     if cwd:
         ctx = _load_project_context(cwd)
         if ctx:
@@ -95,8 +90,49 @@ def ask(
     console.print("[red]✗ AI unavailable after all retries.[/red] Using fallback response.")
     return _fallback(prompt, last_error)
 
+
+def ask_with_history(messages: list[dict]) -> str:
+    """
+    Send a multi-turn conversation to the configured AI provider.
+    messages: list of {"role": "system"|"user"|"assistant", "content": str}
+    """
+    cfg      = _load_config()
+    provider = cfg["provider"]
+    timeout  = int(cfg.get("timeout", DEFAULT_TIMEOUT))
+
+    last_error: Exception | None = None
+
+    for attempt in range(1, MAX_RETRIES + 2):
+        try:
+            if provider == "ollama":
+                return _ollama_chat(messages, cfg, timeout)
+            elif provider == "anthropic":
+                return _anthropic_chat(messages, cfg, timeout)
+            elif provider == "openai":
+                return _openai_chat(messages, cfg, timeout)
+            else:
+                raise ValueError(f"Unknown provider: {provider!r}")
+
+        except _TimeoutError as e:
+            last_error = e
+            console.print(f"[yellow]⚠ AI timeout (attempt {attempt}/{MAX_RETRIES + 1})[/yellow]")
+
+        except _ProviderUnavailableError as e:
+            last_error = e
+            console.print(f"[yellow]⚠ Provider unavailable (attempt {attempt}/{MAX_RETRIES + 1}): {e}[/yellow]")
+
+        except Exception as e:
+            last_error = e
+            console.print(f"[yellow]⚠ AI error (attempt {attempt}/{MAX_RETRIES + 1}): {e}[/yellow]")
+
+        if attempt <= MAX_RETRIES:
+            time.sleep(RETRY_DELAY)
+
+    console.print("[red]✗ AI unavailable after all retries.[/red]")
+    return "# AI unavailable"
+
 # ---------------------------------------------------------------------------
-# provider implementations
+# provider implementations — single prompt
 # ---------------------------------------------------------------------------
 
 def _ask_ollama(prompt: str, cfg: dict, timeout: int) -> str:
@@ -126,6 +162,7 @@ def _ask_ollama(prompt: str, cfg: dict, timeout: int) -> str:
         raise _ProviderUnavailableError(
             f"Ollama HTTP {e.response.status_code}: {e.response.text[:200]}"
         ) from e
+
 
 def _ask_anthropic(prompt: str, cfg: dict, timeout: int) -> str:
     try:
@@ -159,6 +196,7 @@ def _ask_anthropic(prompt: str, cfg: dict, timeout: int) -> str:
     except anthropic.AuthenticationError as e:
         raise _ProviderUnavailableError("Anthropic: invalid API key.") from e
 
+
 def _ask_openai(prompt: str, cfg: dict, timeout: int) -> str:
     try:
         import openai
@@ -181,6 +219,117 @@ def _ask_openai(prompt: str, cfg: dict, timeout: int) -> str:
         resp = client.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.choices[0].message.content.strip()
+
+    except openai.APITimeoutError as e:
+        raise _TimeoutError(f"OpenAI timeout after {timeout}s") from e
+
+    except openai.APIConnectionError as e:
+        raise _ProviderUnavailableError(f"OpenAI connection error: {e}") from e
+
+    except openai.AuthenticationError:
+        raise _ProviderUnavailableError("OpenAI: invalid API key.") from None
+
+# ---------------------------------------------------------------------------
+# provider implementations — multi-turn chat
+# ---------------------------------------------------------------------------
+
+def _ollama_chat(messages: list[dict], cfg: dict, timeout: int) -> str:
+    import httpx
+
+    host  = cfg.get("ollama_host", "http://localhost:11434")
+    model = cfg.get("model", "llama3.2")
+
+    try:
+        resp = httpx.post(
+            f"{host}/api/chat",
+            json={"model": model, "messages": messages, "stream": False},
+            timeout=timeout,
+        )
+        resp.raise_for_status()
+        return resp.json()["message"]["content"].strip()
+
+    except httpx.TimeoutException as e:
+        raise _TimeoutError(f"Ollama timeout after {timeout}s") from e
+
+    except httpx.ConnectError as e:
+        raise _ProviderUnavailableError(
+            f"Cannot reach Ollama at {host}. Is it running? Try: ollama serve"
+        ) from e
+
+    except httpx.HTTPStatusError as e:
+        raise _ProviderUnavailableError(
+            f"Ollama HTTP {e.response.status_code}: {e.response.text[:200]}"
+        ) from e
+
+
+def _anthropic_chat(messages: list[dict], cfg: dict, timeout: int) -> str:
+    try:
+        import anthropic
+    except ImportError:
+        raise _ProviderUnavailableError(
+            "anthropic package not installed. Run: pip install anthropic"
+        )
+
+    api_key = cfg.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise _ProviderUnavailableError("ANTHROPIC_API_KEY is not set.")
+
+    model = cfg.get("model", "claude-3-haiku-20240307")
+
+    # Anthropic sépare system des messages
+    system = ""
+    chat_messages = []
+    for m in messages:
+        if m["role"] == "system":
+            system = m["content"]
+        else:
+            chat_messages.append({"role": m["role"], "content": m["content"]})
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model=model,
+            max_tokens=4096,
+            system=system,
+            messages=chat_messages,
+        )
+        return response.content[0].text.strip()
+
+    except anthropic.APITimeoutError as e:
+        raise _TimeoutError(f"Anthropic timeout after {timeout}s") from e
+
+    except anthropic.APIConnectionError as e:
+        raise _ProviderUnavailableError(f"Anthropic connection error: {e}") from e
+
+    except anthropic.AuthenticationError as e:
+        raise _ProviderUnavailableError("Anthropic: invalid API key.") from e
+
+
+def _openai_chat(messages: list[dict], cfg: dict, timeout: int) -> str:
+    try:
+        import openai
+    except ImportError:
+        raise _ProviderUnavailableError(
+            "openai package not installed. Run: pip install openai"
+        )
+
+    api_key  = cfg.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
+    base_url = cfg.get("openai_base_url") or os.environ.get(
+        "OPENAI_BASE_URL", "https://api.openai.com/v1"
+    )
+    model = cfg.get("model", "gpt-4o-mini")
+
+    if not api_key:
+        raise _ProviderUnavailableError("OPENAI_API_KEY is not set.")
+
+    try:
+        client = openai.OpenAI(api_key=api_key, base_url=base_url, timeout=timeout)
+        resp = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=4096,
         )
         return resp.choices[0].message.content.strip()
 
@@ -253,7 +402,6 @@ def _load_config() -> dict:
             k, _, v = line.partition("=")
             k = k.strip().upper()
             v = v.strip()
-            # map GAI_MODEL -> model, GAI_PROVIDER -> provider, etc.
             if k == "GAI_PROVIDER":
                 cfg["provider"] = v
             elif k == "GAI_MODEL":
@@ -269,7 +417,6 @@ def _load_config() -> dict:
             elif k == "GAI_TIMEOUT":
                 cfg["timeout"] = v
 
-    # env vars always win
     overrides = {
         "GAI_PROVIDER":      "provider",
         "GAI_MODEL":         "model",
