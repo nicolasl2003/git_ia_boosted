@@ -38,6 +38,23 @@ def _get_remotes(cwd: str | None) -> list[str]:
         return []
 
 
+def _get_current_branch(cwd: str | None) -> str:
+    try:
+        return git.run(["rev-parse", "--abbrev-ref", "HEAD"], cwd=cwd).strip()
+    except Exception:
+        return "main"
+
+
+def _do_push(remote: str, branch: str, cwd: str | None) -> None:
+    try:
+        result = git.run(["push", remote, branch], cwd=cwd)
+        console.print(f"[green]✓ Push to {remote} succeeded.[/green]")
+        if result.strip():
+            console.print(f"[dim]{result}[/dim]")
+    except Exception as e:
+        console.print(f"[red]✗ Push to {remote} failed: {e}[/red]")
+
+
 def run(path: str | None = None, no_confirm: bool = False) -> None:
     cwd = path or os.getcwd()
 
@@ -110,5 +127,26 @@ def run(path: str | None = None, no_confirm: bool = False) -> None:
     if not Confirm.ask("[bold]Push to remote?[/bold]", default=False):
         return
 
-    from git_booster.commands.resolve import attempt_push
-    attempt_push(cwd)
+    branch = _get_current_branch(cwd)
+
+    if len(remotes) == 1:
+        _do_push(remotes[0], branch, cwd)
+    else:
+        console.print("\n[dim]Available remotes:[/dim]")
+        for i, r in enumerate(remotes, 1):
+            console.print(f"  {i}. {r}")
+
+        choice = Prompt.ask(
+            "Push to which remote?",
+            default="all"
+        )
+
+        if choice == "all":
+            for remote in remotes:
+                _do_push(remote, branch, cwd)
+        elif choice.isdigit() and 1 <= int(choice) <= len(remotes):
+            _do_push(remotes[int(choice) - 1], branch, cwd)
+        elif choice in remotes:
+            _do_push(choice, branch, cwd)
+        else:
+            console.print(f"[red]Unknown remote '{choice}'. Push aborted.[/red]")
